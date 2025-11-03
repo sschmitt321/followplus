@@ -15,6 +15,11 @@ class MeController extends Controller
         $user = auth()->user();
         $user->load(['profile', 'kyc']);
 
+        // Get assets summary
+        $summary = \App\Services\Assets\AssetsService::class;
+        $assetsService = app($summary);
+        $assetsSummary = $assetsService->getSummary($user->id);
+
         return response()->json([
             'user' => [
                 'id' => $user->id,
@@ -33,6 +38,12 @@ class MeController extends Controller
                 'status' => $user->kyc->status,
             ] : null,
             'role' => $user->role,
+            'assets' => [
+                'total_balance' => $assetsSummary->total_balance->toFixed(6),
+                'principal_balance' => $assetsSummary->principal_balance->toFixed(6),
+                'profit_balance' => $assetsSummary->profit_balance->toFixed(6),
+                'bonus_balance' => $assetsSummary->bonus_balance->toFixed(6),
+            ],
         ]);
     }
 }
