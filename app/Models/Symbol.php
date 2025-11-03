@@ -54,5 +54,21 @@ class Symbol extends Model
     {
         return $this->hasMany(FollowOrder::class);
     }
+
+    /**
+     * Get ticks for this symbol.
+     */
+    public function ticks(): HasMany
+    {
+        return $this->hasMany(SymbolTick::class);
+    }
+
+    /**
+     * Get latest tick for this symbol.
+     */
+    public function latestTick(): HasMany
+    {
+        return $this->hasMany(SymbolTick::class)->latest('tick_at');
+    }
 }
 

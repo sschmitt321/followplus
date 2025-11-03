@@ -1,13 +1,19 @@
 <?php
 
+use App\Http\Controllers\Api\V1\Admin\AdminDepositController;
+use App\Http\Controllers\Api\V1\Admin\AdminFollowController;
 use App\Http\Controllers\Api\V1\Admin\AdminReferralController;
+use App\Http\Controllers\Api\V1\Admin\AdminSystemController;
+use App\Http\Controllers\Api\V1\Admin\AdminWithdrawController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DepositController;
 use App\Http\Controllers\Api\V1\FollowController;
 use App\Http\Controllers\Api\V1\KycController;
+use App\Http\Controllers\Api\V1\MarketController;
 use App\Http\Controllers\Api\V1\MeController;
 use App\Http\Controllers\Api\V1\ReferralController;
 use App\Http\Controllers\Api\V1\SwapController;
+use App\Http\Controllers\Api\V1\SystemController;
 use App\Http\Controllers\Api\V1\SystemConfigController;
 use App\Http\Controllers\Api\V1\TransferController;
 use App\Http\Controllers\Api\V1\WalletsController;
@@ -31,6 +37,17 @@ Route::prefix('v1')->middleware(['rate.limit'])->group(function () {
 
         // System config routes (read-only)
         Route::get('/system/configs', [SystemConfigController::class, 'index']);
+
+        // Market routes
+        Route::get('/symbols', [MarketController::class, 'symbols']);
+        Route::get('/symbols/{id}/tick', [MarketController::class, 'tick']);
+        Route::get('/symbols/{id}/tick-history', [MarketController::class, 'tickHistory']);
+
+        // System routes
+        Route::get('/system/announcements', [SystemController::class, 'announcements']);
+        Route::get('/system/help', [SystemController::class, 'help']);
+        Route::get('/system/version', [SystemController::class, 'version']);
+        Route::get('/system/download', [SystemController::class, 'download']);
 
         // Wallet routes
         Route::get('/wallets', [WalletsController::class, 'index']);
@@ -63,8 +80,26 @@ Route::prefix('v1')->middleware(['rate.limit'])->group(function () {
 
         // Admin routes (must be admin role)
         Route::prefix('admin')->middleware('admin')->group(function () {
+            // Referral admin routes
             Route::post('/ref/level-recalc', [AdminReferralController::class, 'levelRecalc']);
             Route::post('/ref/reward-reverse', [AdminReferralController::class, 'rewardReverse']);
+
+            // Deposit admin routes
+            Route::get('/deposits', [AdminDepositController::class, 'index']);
+            Route::post('/deposits/{id}/confirm', [AdminDepositController::class, 'confirm']);
+
+            // Withdrawal admin routes
+            Route::get('/withdrawals', [AdminWithdrawController::class, 'index']);
+            Route::post('/withdrawals/{id}/approve', [AdminWithdrawController::class, 'approve']);
+            Route::post('/withdrawals/{id}/reject', [AdminWithdrawController::class, 'reject']);
+            Route::post('/withdrawals/{id}/mark-paid', [AdminWithdrawController::class, 'markPaid']);
+
+            // Follow admin routes
+            Route::post('/follow-window', [AdminFollowController::class, 'createWindow']);
+            Route::post('/invite-token', [AdminFollowController::class, 'createInviteToken']);
+
+            // System admin routes
+            Route::post('/system/announcement', [AdminSystemController::class, 'announcement']);
         });
     });
 });

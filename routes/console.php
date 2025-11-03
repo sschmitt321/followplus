@@ -31,3 +31,9 @@ Schedule::command('follow:settle-orders')
     ->hourly()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Schedule market tick generation (every minute)
+Schedule::command('market:generate-ticks')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
