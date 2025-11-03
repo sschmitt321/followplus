@@ -49,6 +49,44 @@ test('user can register with invite code', function () {
     expect($user->ref_depth)->toBe(1);
 });
 
+test('user can register with empty string invite_code (should be treated as null)', function () {
+    $idempotencyKey = 'test-register-empty-invite-' . uniqid();
+    $response = $this->withHeader('Idempotency-Key', $idempotencyKey)
+        ->postJson('/api/v1/auth/register', [
+            'email' => 'noinvite@example.com',
+            'password' => 'password123',
+            'invite_code' => '', // Empty string should be treated as null
+        ]);
+
+    $response->assertStatus(200)
+        ->assertJsonStructure([
+            'access',
+            'refresh',
+        ]);
+
+    $user = User::where('email', 'noinvite@example.com')->first();
+    expect($user->invited_by_user_id)->toBeNull();
+    expect($user->ref_depth)->toBe(0);
+});
+
+test('user cannot register with invalid invite_code', function () {
+    $idempotencyKey = 'test-register-invalid-invite-' . uniqid();
+    $response = $this->withHeader('Idempotency-Key', $idempotencyKey)
+        ->postJson('/api/v1/auth/register', [
+            'email' => 'invalidinvite@example.com',
+            'password' => 'password123',
+            'invite_code' => 'INVALID_CODE',
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonStructure([
+            'error',
+            'errors' => [
+                'invite_code',
+            ],
+        ]);
+});
+
 test('user cannot register with duplicate email', function () {
     User::factory()->create(['email' => 'existing@example.com']);
 

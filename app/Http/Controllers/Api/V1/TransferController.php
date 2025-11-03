@@ -16,14 +16,33 @@ class TransferController extends Controller
 
     /**
      * Transfer between account types.
+     * 
+     * Transfers funds between spot and contract accounts. Both accounts must be different types.
+     * The transfer is instant and updates both account balances immediately.
+     * 
+     * @param Request $request
+     * @param string $request->from Required. Source account type. Must be either "spot" or "contract".
+     * @param string $request->to Required. Destination account type. Must be either "spot" or "contract". Must be different from "from".
+     * @param string $request->amount Required. Transfer amount as string (e.g., "100.50"). Must be >= 0 and <= available balance.
+     * @param string $request->currency Required. Currency code (e.g., "USDT", "BTC"). Must exist in currencies table.
+     * 
+     * @return JsonResponse Returns transfer record with details
+     * 
+     * Request example:
+     * {
+     *   "from": "spot",
+     *   "to": "contract",
+     *   "amount": "1000.00",
+     *   "currency": "USDT"
+     * }
      */
     public function transfer(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'from' => 'required|in:spot,contract',
-            'to' => 'required|in:spot,contract',
-            'amount' => 'required|string|min:0',
-            'currency' => 'required|string|exists:currencies,name',
+            'from' => 'required|in:spot,contract', // Source account type (must be "spot" or "contract")
+            'to' => 'required|in:spot,contract', // Destination account type (must be "spot" or "contract", must differ from "from")
+            'amount' => 'required|string|min:0', // Transfer amount (string format, e.g., "100.50", must be >= 0)
+            'currency' => 'required|string|exists:currencies,name', // Currency code (e.g., "USDT", "BTC", must exist in system)
         ]);
 
         try {

@@ -151,9 +151,17 @@ test('apply withdrawal validates required fields', function () {
     $response->assertStatus(422);
 });
 
-test('apply withdrawal requires idempotency key', function () {
+test('apply withdrawal allows request without idempotency key', function () {
     $user = User::factory()->create();
     Currency::factory()->create(['name' => 'USDT']);
+    
+    // Create account with balance
+    \App\Models\Account::create([
+        'user_id' => $user->id,
+        'type' => 'spot',
+        'currency' => 'USDT',
+        'available' => \App\Support\Decimal::of('200'),
+    ]);
 
     $token = \PHPOpenSourceSaver\JWTAuth\Facades\JWTAuth::fromUser($user);
 
@@ -164,7 +172,9 @@ test('apply withdrawal requires idempotency key', function () {
             'withdraw_password' => '123456',
         ]);
 
-    $response->assertStatus(400);
+    // Should allow request without idempotency key (may fail for other reasons like insufficient balance)
+    // If idempotency key was required, we would get 400, otherwise we get the actual validation error
+    expect($response->status())->not->toBe(400);
 });
 
 test('apply withdrawal throws error on insufficient balance', function () {

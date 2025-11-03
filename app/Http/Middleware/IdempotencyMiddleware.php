@@ -23,10 +23,9 @@ class IdempotencyMiddleware
 
         $idempotencyKey = $request->header('Idempotency-Key');
 
+        // If no idempotency key provided, skip idempotency check
         if (!$idempotencyKey) {
-            return response()->json([
-                'error' => 'Idempotency-Key header is required',
-            ], 400);
+            return $next($request);
         }
 
         // Check if this key was already processed

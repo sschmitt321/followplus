@@ -77,9 +77,17 @@ test('transfer validates required fields', function () {
     $response->assertStatus(422);
 });
 
-test('transfer requires idempotency key', function () {
+test('transfer allows request without idempotency key', function () {
     $user = User::factory()->create();
     Currency::factory()->create(['name' => 'USDT']);
+    
+    // Create account with balance
+    \App\Models\Account::create([
+        'user_id' => $user->id,
+        'type' => 'spot',
+        'currency' => 'USDT',
+        'available' => \App\Support\Decimal::of('200'),
+    ]);
 
     $token = \PHPOpenSourceSaver\JWTAuth\Facades\JWTAuth::fromUser($user);
 
@@ -91,7 +99,9 @@ test('transfer requires idempotency key', function () {
             'currency' => 'USDT',
         ]);
 
-    $response->assertStatus(400);
+    // Should allow request without idempotency key (may fail for other reasons like insufficient balance)
+    // If idempotency key was required, we would get 400, otherwise we get the actual validation error
+    expect($response->status())->not->toBe(400);
 });
 
 test('transfer throws error when from and to are same', function () {

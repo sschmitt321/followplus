@@ -12,6 +12,22 @@ class ReferralController extends Controller
 {
     /**
      * Get referral summary for current user.
+     * 
+     * Returns referral program statistics for the authenticated user, including:
+     * - Direct referrals count (users directly invited)
+     * - Team references count (total users in referral tree)
+     * - Ambassador level (L0-L5 based on team size)
+     * - Dividend rate (profit sharing percentage based on level)
+     * - Total rewards earned from referral program
+     * 
+     * If no referral statistics exist for the user, default values are created and returned.
+     * 
+     * @return JsonResponse Returns referral summary:
+     * - direct_count: Number of directly invited users
+     * - team_count: Total number of users in referral team tree
+     * - level: Ambassador level (L0, L1, L2, L3, L4, or L5)
+     * - dividend_rate: Profit sharing rate (0-1, based on ambassador level)
+     * - total_rewards: Total rewards earned from referral program
      */
     public function summary(): JsonResponse
     {
@@ -40,6 +56,23 @@ class ReferralController extends Controller
 
     /**
      * Get reward history.
+     * 
+     * Returns paginated list of referral rewards earned by the authenticated user.
+     * Supports filtering by reward type and status. Rewards are earned from:
+     * - Direct referrals (users directly invited)
+     * - Team referrals (users in referral tree)
+     * - Ambassador dividends (profit sharing based on level)
+     * 
+     * @param Request $request Query parameters
+     * @param string|null $request->type Optional. Filter by reward type. Allowed values depend on reward types configured in system.
+     * @param string|null $request->status Optional. Filter by reward status. Allowed values: "pending", "paid", "reversed".
+     * @param int|null $request->page Optional. Page number for pagination (default: 1)
+     * 
+     * @return JsonResponse Returns paginated reward list with metadata:
+     * - rewards: Array of reward records with type, amount, status, source_user_id, and timestamp
+     * - pagination: Pagination metadata (current_page, total_pages, total)
+     * 
+     * Query example: ?type=direct&status=paid&page=1
      */
     public function rewards(Request $request): JsonResponse
     {

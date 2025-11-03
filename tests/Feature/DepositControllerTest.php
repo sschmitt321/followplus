@@ -90,7 +90,7 @@ test('authenticated user can manually apply deposit', function () {
     expect($account->available->toString())->toBe('500.500000');
 });
 
-test('manual apply deposit requires idempotency key', function () {
+test('manual apply deposit allows request without idempotency key', function () {
     $user = User::factory()->create();
     Currency::factory()->create(['name' => 'USDT']);
 
@@ -102,7 +102,8 @@ test('manual apply deposit requires idempotency key', function () {
             'currency' => 'USDT',
         ]);
 
-    $response->assertStatus(400);
+    // Should allow request without idempotency key
+    $response->assertStatus(200);
 });
 
 test('manual apply deposit validates required fields', function () {

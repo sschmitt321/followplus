@@ -16,6 +16,19 @@ class WalletsController extends Controller
 
     /**
      * Get wallet information with deposit addresses.
+     * 
+     * Returns comprehensive wallet information for all enabled currencies, including:
+     * - Spot and contract account balances (available and frozen)
+     * - Deposit addresses and instructions for each currency
+     * - Overall assets summary (total balance, principal, profit, bonus)
+     * 
+     * Each currency includes two account types:
+     * - spot: Available and frozen balances in spot account
+     * - contract: Available and frozen balances in contract account
+     * 
+     * @return JsonResponse Returns wallet information:
+     * - wallets: Array of wallet objects, one per enabled currency, with balances and deposit info
+     * - summary: Overall assets summary including total_balance, principal_balance, profit_balance, bonus_balance
      */
     public function index(): JsonResponse
     {

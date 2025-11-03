@@ -16,6 +16,11 @@ class MarketController extends Controller
 
     /**
      * Get all enabled symbols.
+     * 
+     * Returns list of all enabled trading pairs (symbols) available in the system.
+     * Each symbol represents a trading pair like BTC/USDT.
+     * 
+     * @return JsonResponse Returns array of enabled symbols with id, base, quote, and name
      */
     public function symbols(): JsonResponse
     {
@@ -35,6 +40,15 @@ class MarketController extends Controller
 
     /**
      * Get latest tick for a symbol.
+     * 
+     * Returns the most recent market tick data for a specific trading symbol.
+     * Includes latest price, change percentage, and timestamp.
+     * 
+     * @param int $id Symbol ID (path parameter)
+     * 
+     * @return JsonResponse Returns latest tick data or null if no data available
+     * 
+     * Path example: /api/v1/symbols/1/tick
      */
     public function tick(int $id): JsonResponse
     {
@@ -63,6 +77,15 @@ class MarketController extends Controller
 
     /**
      * Get tick history for a symbol.
+     * 
+     * Returns historical tick data for a symbol, ordered by time descending (newest first).
+     * Default limit is 100 ticks.
+     * 
+     * @param int $id Symbol ID (path parameter)
+     * 
+     * @return JsonResponse Returns array of historical ticks with price, change percent, and timestamp
+     * 
+     * Path example: /api/v1/symbols/1/tick-history
      */
     public function tickHistory(int $id): JsonResponse
     {

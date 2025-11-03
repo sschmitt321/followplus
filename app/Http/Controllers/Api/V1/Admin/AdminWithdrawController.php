@@ -19,16 +19,28 @@ class AdminWithdrawController extends Controller
 
     /**
      * Get all withdrawals (with filters).
+     * 
+     * Returns paginated list of all withdrawals in the system. Admin only endpoint.
+     * Supports filtering by status and user_id.
+     * 
+     * @param Request $request Query parameters
+     * @param string|null $request->status Optional. Filter by withdrawal status. Allowed values: "pending", "approved", "rejected", "paid".
+     * @param int|null $request->user_id Optional. Filter by user ID.
+     * @param int|null $request->page Optional. Page number for pagination (default: 1)
+     * 
+     * @return JsonResponse Returns paginated withdrawal list with user information
+     * 
+     * Query example: ?status=pending&user_id=1&page=1
      */
     public function index(Request $request): JsonResponse
     {
         $query = Withdrawal::with('user');
 
-        if ($request->has('status')) {
+        if ($request->has('status')) { // Filter by status (pending, approved, rejected, paid)
             $query->where('status', $request->get('status'));
         }
 
-        if ($request->has('user_id')) {
+        if ($request->has('user_id')) { // Filter by user ID
             $query->where('user_id', $request->get('user_id'));
         }
 
@@ -61,6 +73,15 @@ class AdminWithdrawController extends Controller
 
     /**
      * Approve a withdrawal.
+     * 
+     * Approves a pending withdrawal request. The withdrawal status changes to "approved",
+     * but funds remain frozen until marked as paid. Creates audit log entry.
+     * 
+     * @param int $id Withdrawal ID (path parameter)
+     * 
+     * @return JsonResponse Returns success message and updated withdrawal status
+     * 
+     * Path example: /api/v1/admin/withdrawals/1/approve
      */
     public function approve(int $id): JsonResponse
     {
@@ -95,6 +116,16 @@ class AdminWithdrawController extends Controller
 
     /**
      * Reject a withdrawal.
+     * 
+     * Rejects a pending withdrawal request. The frozen amount will be unfrozen and returned
+     * to user's available balance. Creates audit log entry.
+     * 
+     * @param Request $request
+     * @param int $id Withdrawal ID (path parameter)
+     * 
+     * @return JsonResponse Returns success message and updated withdrawal status
+     * 
+     * Path example: /api/v1/admin/withdrawals/1/reject
      */
     public function reject(Request $request, int $id): JsonResponse
     {
@@ -129,11 +160,26 @@ class AdminWithdrawController extends Controller
 
     /**
      * Mark withdrawal as paid.
+     * 
+     * Marks an approved withdrawal as paid. The frozen amount will be debited from user's account
+     * and transferred out. Withdrawal status changes to "paid". Creates audit log entry.
+     * 
+     * @param Request $request
+     * @param int $id Withdrawal ID (path parameter)
+     * @param string|null $request->txid Optional. Transaction ID from blockchain (max 255 characters).
+     * 
+     * @return JsonResponse Returns success message and updated withdrawal status
+     * 
+     * Path example: /api/v1/admin/withdrawals/1/mark-paid
+     * Request example:
+     * {
+     *   "txid": "0xabcdef123456"
+     * }
      */
     public function markPaid(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate([
-            'txid' => 'nullable|string|max:255',
+            'txid' => 'nullable|string|max:255', // Transaction ID from blockchain (optional, max 255 characters)
         ]);
 
         try {

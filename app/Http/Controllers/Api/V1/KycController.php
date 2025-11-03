@@ -16,6 +16,13 @@ class KycController extends Controller
 
     /**
      * Get KYC status.
+     * 
+     * Returns the current KYC (Know Your Customer) verification status for the authenticated user.
+     * Includes KYC level (none, basic, advanced) and verification status (pending, approved, rejected).
+     * 
+     * @return JsonResponse Returns KYC status information:
+     * - level: KYC level ("none", "basic", or "advanced")
+     * - status: Verification status ("pending", "approved", or "rejected")
      */
     public function status(): JsonResponse
     {
@@ -29,7 +36,22 @@ class KycController extends Controller
     }
 
     /**
-     * Submit basic KYC.
+     * Submit basic KYC information.
+     * 
+     * Submits basic KYC information (real name) for verification. After submission,
+     * the KYC status changes to "pending" and level changes to "basic".
+     * 
+     * @param Request $request
+     * @param string $request->name Required. User's real name (max 255 characters). This will be used for identity verification.
+     * 
+     * @return JsonResponse Returns success message and updated KYC information:
+     * - message: Success confirmation message
+     * - kyc: Updated KYC object with level and status
+     * 
+     * Request example:
+     * {
+     *   "name": "张三"
+     * }
      */
     public function submitBasic(Request $request): JsonResponse
     {
@@ -49,7 +71,25 @@ class KycController extends Controller
     }
 
     /**
-     * Submit advanced KYC.
+     * Submit advanced KYC information.
+     * 
+     * Submits advanced KYC information including ID card images (front and back).
+     * Both images must be provided as URLs. After submission, the KYC level changes to "advanced"
+     * and status changes to "pending" for manual review.
+     * 
+     * @param Request $request
+     * @param string $request->front Required. URL of ID card front image. Must be a valid URL pointing to an image file.
+     * @param string $request->back Required. URL of ID card back image. Must be a valid URL pointing to an image file.
+     * 
+     * @return JsonResponse Returns success message and updated KYC information:
+     * - message: Success confirmation message
+     * - kyc: Updated KYC object with level "advanced" and status "pending"
+     * 
+     * Request example:
+     * {
+     *   "front": "https://example.com/uploads/id_front.jpg",
+     *   "back": "https://example.com/uploads/id_back.jpg"
+     * }
      */
     public function submitAdvanced(Request $request): JsonResponse
     {

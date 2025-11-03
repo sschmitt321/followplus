@@ -16,6 +16,11 @@ class SystemController extends Controller
 
     /**
      * Get system announcements.
+     * 
+     * Returns all active system announcements. Announcements are cached for 1 hour.
+     * Each announcement includes title, content, type, and publication timestamp.
+     * 
+     * @return JsonResponse Returns array of announcements
      */
     public function announcements(): JsonResponse
     {
@@ -39,6 +44,11 @@ class SystemController extends Controller
 
     /**
      * Get help content.
+     * 
+     * Returns FAQ (Frequently Asked Questions) and contact information.
+     * Content is cached for 1 hour.
+     * 
+     * @return JsonResponse Returns FAQ list and contact details (email, telegram)
      */
     public function help(): JsonResponse
     {
@@ -70,6 +80,15 @@ class SystemController extends Controller
 
     /**
      * Get app version info.
+     * 
+     * Returns current app version, build number, minimum required version,
+     * and whether an update is required.
+     * 
+     * @return JsonResponse Returns version information including:
+     * - version: Current app version (e.g., "1.0.0")
+     * - build: Build number/date (e.g., "2025.11.06")
+     * - min_version: Minimum required version
+     * - update_required: Boolean indicating if update is mandatory
      */
     public function version(): JsonResponse
     {
@@ -83,6 +102,13 @@ class SystemController extends Controller
 
     /**
      * Get app download links.
+     * 
+     * Returns download links for iOS and Android mobile apps.
+     * Includes App Store and Google Play Store URLs with version information.
+     * 
+     * @return JsonResponse Returns download links for:
+     * - ios: App Store URL and version
+     * - android: Google Play Store URL and version
      */
     public function download(): JsonResponse
     {

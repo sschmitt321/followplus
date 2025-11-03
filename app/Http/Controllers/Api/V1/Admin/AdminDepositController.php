@@ -19,16 +19,28 @@ class AdminDepositController extends Controller
 
     /**
      * Get all deposits (with filters).
+     * 
+     * Returns paginated list of all deposits in the system. Admin only endpoint.
+     * Supports filtering by status and user_id.
+     * 
+     * @param Request $request Query parameters
+     * @param string|null $request->status Optional. Filter by deposit status. Allowed values: "pending", "confirmed", "rejected".
+     * @param int|null $request->user_id Optional. Filter by user ID.
+     * @param int|null $request->page Optional. Page number for pagination (default: 1)
+     * 
+     * @return JsonResponse Returns paginated deposit list with user information
+     * 
+     * Query example: ?status=pending&user_id=1&page=1
      */
     public function index(Request $request): JsonResponse
     {
         $query = Deposit::with('user');
 
-        if ($request->has('status')) {
+        if ($request->has('status')) { // Filter by status (pending, confirmed, rejected)
             $query->where('status', $request->get('status'));
         }
 
-        if ($request->has('user_id')) {
+        if ($request->has('user_id')) { // Filter by user ID
             $query->where('user_id', $request->get('user_id'));
         }
 
@@ -59,11 +71,26 @@ class AdminDepositController extends Controller
 
     /**
      * Confirm a deposit.
+     * 
+     * Confirms a pending deposit and credits the amount to user's account.
+     * The deposit must be in "pending" status. Creates audit log entry.
+     * 
+     * @param Request $request
+     * @param int $id Deposit ID (path parameter)
+     * @param string|null $request->txid Optional. Transaction ID from blockchain (max 255 characters).
+     * 
+     * @return JsonResponse Returns success message and updated deposit status
+     * 
+     * Path example: /api/v1/admin/deposits/1/confirm
+     * Request example:
+     * {
+     *   "txid": "0x1234567890abcdef"
+     * }
      */
     public function confirm(Request $request, int $id): JsonResponse
     {
         $validated = $request->validate([
-            'txid' => 'nullable|string|max:255',
+            'txid' => 'nullable|string|max:255', // Transaction ID from blockchain (optional, max 255 characters)
         ]);
 
         try {

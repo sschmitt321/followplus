@@ -19,13 +19,30 @@ class AdminSystemController extends Controller
 
     /**
      * Create or update system announcement.
+     * 
+     * Creates a new system announcement that will be displayed to all users.
+     * Announcements are cached for 30 days. Admin only endpoint.
+     * 
+     * @param Request $request
+     * @param string $request->title Required. Announcement title (max 255 characters).
+     * @param string $request->content Required. Announcement content (full text).
+     * @param string $request->type Required. Announcement type. Allowed values: "info" (blue), "warning" (yellow), "error" (red), "success" (green).
+     * 
+     * @return JsonResponse Returns created announcement with ID and timestamp
+     * 
+     * Request example:
+     * {
+     *   "title": "系统维护通知",
+     *   "content": "系统将于今晚进行维护，预计持续2小时",
+     *   "type": "warning"
+     * }
      */
     public function announcement(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'content' => 'required|string',
-            'type' => 'required|in:info,warning,error,success',
+            'title' => 'required|string|max:255', // Announcement title (max 255 characters)
+            'content' => 'required|string', // Announcement content (full text)
+            'type' => 'required|in:info,warning,error,success', // Announcement type (info, warning, error, or success)
         ]);
 
         try {

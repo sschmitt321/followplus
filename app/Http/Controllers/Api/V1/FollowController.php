@@ -19,10 +19,20 @@ class FollowController extends Controller
 
     /**
      * Get available windows for a date.
+     * 
+     * Returns all available follow windows for the specified date. Includes fixed daily windows
+     * and bonus windows that the user is eligible for based on their account status.
+     * 
+     * @param Request $request Query parameters
+     * @param string|null $request->date Optional. Date in YYYY-MM-DD format (default: today)
+     * 
+     * @return JsonResponse Returns list of available windows with details
+     * 
+     * Query example: ?date=2025-11-06
      */
     public function availableWindows(Request $request): JsonResponse
     {
-        $date = $request->input('date', now()->format('Y-m-d'));
+        $date = $request->input('date', now()->format('Y-m-d')); // Date in YYYY-MM-DD format (default: today)
         
         $windows = $this->followService->getAvailableWindows($date);
         
@@ -34,14 +44,33 @@ class FollowController extends Controller
 
     /**
      * Place a follow order.
+     * 
+     * Creates a follow order for the specified window. The actual investment amount is calculated
+     * as 1% of user's total assets. The amount_input parameter is only used for audit purposes.
+     * 
+     * @param Request $request
+     * @param int $request->follow_window_id Required. ID of the follow window to join. Window must be active and not expired.
+     * @param int $request->symbol_id Required. ID of the trading symbol (must match window's symbol).
+     * @param string $request->invite_token Required. Valid invite token for the window (max 64 characters).
+     * @param string|null $request->amount_input Optional. User's intended amount (for audit only, actual amount is 1% of total assets).
+     * 
+     * @return JsonResponse Returns created order with calculated amount_base
+     * 
+     * Request example:
+     * {
+     *   "follow_window_id": 1,
+     *   "symbol_id": 1,
+     *   "invite_token": "ABCD1234",
+     *   "amount_input": "100"
+     * }
      */
     public function placeOrder(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'follow_window_id' => 'required|integer|exists:follow_windows,id',
-            'symbol_id' => 'required|integer|exists:symbols,id',
-            'invite_token' => 'required|string|max:64',
-            'amount_input' => 'nullable|string', // Optional, for audit
+            'follow_window_id' => 'required|integer|exists:follow_windows,id', // Follow window ID (must exist and be active)
+            'symbol_id' => 'required|integer|exists:symbols,id', // Trading symbol ID (must match window's symbol)
+            'invite_token' => 'required|string|max:64', // Invite token for the window (max 64 characters)
+            'amount_input' => 'nullable|string', // Optional user input amount (for audit only, actual amount = 1% of total assets)
         ]);
 
         try {
@@ -75,6 +104,19 @@ class FollowController extends Controller
 
     /**
      * Get user's follow orders.
+     * 
+     * Returns paginated list of user's follow orders. Supports filtering by status.
+     * Each order includes symbol information, window type, amount, profit, and settlement status.
+     * 
+     * @param Request $request Query parameters
+     * @param string|null $request->status Optional. Filter by order status. Allowed values: "pending", "settled", "cancelled".
+     * @param int|null $request->page Optional. Page number for pagination (default: 1)
+     * 
+     * @return JsonResponse Returns paginated order list with metadata:
+     * - orders: Array of order records with symbol, window_type, amount_base, profit, status, and timestamps
+     * - pagination: Pagination metadata (current_page, total_pages, total)
+     * 
+     * Query example: ?status=pending&page=1
      */
     public function orders(Request $request): JsonResponse
     {
@@ -114,6 +156,20 @@ class FollowController extends Controller
 
     /**
      * Get user's follow summary.
+     * 
+     * Returns statistics about user's follow trading activity, including:
+     * - Total orders count
+     * - Total investment amount
+     * - Total profit/loss
+     * - Success rate
+     * - Recent activity summary
+     * 
+     * @return JsonResponse Returns summary statistics including:
+     * - total_orders: Total number of follow orders placed
+     * - total_investment: Total amount invested across all orders
+     * - total_profit: Total profit/loss from settled orders
+     * - success_rate: Percentage of profitable orders
+     * - recent_activity: Summary of recent orders
      */
     public function summary(): JsonResponse
     {

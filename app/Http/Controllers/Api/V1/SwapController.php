@@ -17,13 +17,30 @@ class SwapController extends Controller
 
     /**
      * Get swap quote.
+     * 
+     * Gets an exchange rate quote for swapping between two currencies. The quote is valid for 5 minutes.
+     * Returns quote_id which must be used to confirm the swap.
+     * 
+     * @param Request $request
+     * @param string $request->from Required. Source currency code (e.g., "USDT"). Must exist in currencies table.
+     * @param string $request->to Required. Destination currency code (e.g., "BTC"). Must exist in currencies table.
+     * @param string $request->amount Required. Amount to swap from source currency (e.g., "1000.00"). Must be >= 0.
+     * 
+     * @return JsonResponse Returns quote_id, exchange rate, and calculated amounts
+     * 
+     * Request example:
+     * {
+     *   "from": "USDT",
+     *   "to": "BTC",
+     *   "amount": "1000.00"
+     * }
      */
     public function quote(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'from' => 'required|string|exists:currencies,name',
-            'to' => 'required|string|exists:currencies,name',
-            'amount' => 'required|string|min:0',
+            'from' => 'required|string|exists:currencies,name', // Source currency code (e.g., "USDT", must exist in system)
+            'to' => 'required|string|exists:currencies,name', // Destination currency code (e.g., "BTC", must exist in system)
+            'amount' => 'required|string|min:0', // Amount to swap (string format, e.g., "1000.00", must be >= 0)
         ]);
 
         try {
@@ -50,11 +67,25 @@ class SwapController extends Controller
 
     /**
      * Confirm swap.
+     * 
+     * Executes the swap using a valid quote_id obtained from the quote endpoint.
+     * The quote must be used within 5 minutes. After confirmation, funds are transferred
+     * between currencies in the user's spot account.
+     * 
+     * @param Request $request
+     * @param string $request->quote_id Required. Quote ID obtained from /swap/quote endpoint. Must be valid and not expired (5 minutes validity).
+     * 
+     * @return JsonResponse Returns swap record with details
+     * 
+     * Request example:
+     * {
+     *   "quote_id": "quote_67890abcdef"
+     * }
      */
     public function confirm(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'quote_id' => 'required|string',
+            'quote_id' => 'required|string', // Quote ID from /swap/quote endpoint (valid for 5 minutes)
         ]);
 
         try {

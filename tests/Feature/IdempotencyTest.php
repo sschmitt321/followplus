@@ -34,16 +34,17 @@ test('idempotency middleware returns cached response for duplicate requests', fu
     expect(User::where('email', 'test2@example.com')->exists())->toBeFalse();
 });
 
-test('idempotency middleware requires idempotency key for POST requests', function () {
+test('idempotency middleware allows POST requests without key', function () {
     $response = $this->postJson('/api/v1/auth/register', [
-        'email' => 'test@example.com',
+        'email' => 'test-no-key@example.com',
         'password' => 'password123',
     ]);
 
-    $response->assertStatus(400)
-        ->assertJson([
-            'error' => 'Idempotency-Key header is required',
-        ]);
+    // Should allow request without idempotency key
+    $response->assertStatus(200);
+    
+    // Should create user
+    expect(User::where('email', 'test-no-key@example.com')->exists())->toBeTrue();
 });
 
 test('idempotency middleware allows GET requests without key', function () {
