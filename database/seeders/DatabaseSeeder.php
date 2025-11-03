@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             CurrencySeeder::class,
             AdminSeeder::class,
+            SymbolSeeder::class,
         ]);
     }
 }

@@ -1,9 +1,12 @@
 <?php
 
+use App\Http\Controllers\Api\V1\Admin\AdminReferralController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DepositController;
+use App\Http\Controllers\Api\V1\FollowController;
 use App\Http\Controllers\Api\V1\KycController;
 use App\Http\Controllers\Api\V1\MeController;
+use App\Http\Controllers\Api\V1\ReferralController;
 use App\Http\Controllers\Api\V1\SwapController;
 use App\Http\Controllers\Api\V1\SystemConfigController;
 use App\Http\Controllers\Api\V1\TransferController;
@@ -47,6 +50,22 @@ Route::prefix('v1')->middleware(['rate.limit'])->group(function () {
         // Swap routes
         Route::post('/swap/quote', [SwapController::class, 'quote']);
         Route::post('/swap/confirm', [SwapController::class, 'confirm'])->middleware('idempotency');
+
+        // Referral routes
+        Route::get('/ref/summary', [ReferralController::class, 'summary']);
+        Route::get('/ref/rewards', [ReferralController::class, 'rewards']);
+
+        // Follow routes
+        Route::get('/follow/windows/available', [FollowController::class, 'availableWindows']);
+        Route::post('/follow/order', [FollowController::class, 'placeOrder'])->middleware('idempotency');
+        Route::get('/follow/orders', [FollowController::class, 'orders']);
+        Route::get('/follow/summary', [FollowController::class, 'summary']);
+
+        // Admin routes (must be admin role)
+        Route::prefix('admin')->middleware('admin')->group(function () {
+            Route::post('/ref/level-recalc', [AdminReferralController::class, 'levelRecalc']);
+            Route::post('/ref/reward-reverse', [AdminReferralController::class, 'rewardReverse']);
+        });
     });
 });
 

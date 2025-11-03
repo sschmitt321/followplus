@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\Withdrawal;
 use App\Services\Assets\AssetsService;
 use App\Services\Ledger\LedgerService;
+use App\Services\Referral\ReferralService;
 use App\Services\System\ConfigService;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +18,8 @@ class WithdrawService
     public function __construct(
         private LedgerService $ledgerService,
         private AssetsService $assetsService,
-        private ConfigService $configService
+        private ConfigService $configService,
+        private ?ReferralService $referralService = null
     ) {
     }
 
@@ -171,7 +173,19 @@ class WithdrawService
                 'txid' => $txid,
             ]);
 
-            // TODO: 触发模块3的断链逻辑（如果新人提现）
+            // Trigger detach logic if user is a direct downline (module 3)
+            if ($this->referralService) {
+                try {
+                    $user = User::findOrFail($withdrawal->user_id);
+                    // Check if user is newbie (within 7 days) and has inviter
+                    if ($user->invited_by_user_id && $user->first_joined_at && $user->first_joined_at->diffInDays(now()) < 7) {
+                        $this->referralService->onDirectDownlineWithdrawPaid($withdrawal->user_id);
+                    }
+                } catch (\Exception $e) {
+                    // Log error but don't fail the withdrawal
+                    \Log::error('Failed to trigger detach logic: ' . $e->getMessage());
+                }
+            }
 
             return $withdrawal->fresh();
         });

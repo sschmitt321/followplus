@@ -4,13 +4,15 @@ namespace App\Services\Deposit;
 
 use App\Models\Deposit;
 use App\Services\Ledger\LedgerService;
+use App\Services\Referral\RewardService;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 
 class DepositService
 {
     public function __construct(
-        private LedgerService $ledgerService
+        private LedgerService $ledgerService,
+        private ?RewardService $rewardService = null
     ) {
     }
 
@@ -61,6 +63,19 @@ class DepositService
                 'deposit',
                 $deposit->id
             );
+
+            // Trigger referral rewards if this is first deposit
+            if ($this->rewardService) {
+                try {
+                    $this->rewardService->grantReferralOnDeposit(
+                        $deposit->user_id,
+                        $deposit->amount
+                    );
+                } catch (\Exception $e) {
+                    // Log error but don't fail the deposit
+                    \Log::error('Failed to grant referral rewards: ' . $e->getMessage());
+                }
+            }
 
             return $deposit->fresh();
         });
