@@ -78,3 +78,6 @@ test('assets summary matches account balances', function () {
     expect($summary->total_balance->toString())->toBe($totalFromAccounts->toString());
 });
 
+
+
+

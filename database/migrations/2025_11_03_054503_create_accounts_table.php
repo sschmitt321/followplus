@@ -23,11 +23,7 @@ return new class extends Migration
             
             $table->unique(['user_id', 'type', 'currency'], 'idx_user_type_currency');
             $table->index('user_id');
-        });
-        
-        // Add foreign key constraint after currencies table exists
-        Schema::table('accounts', function (Blueprint $table) {
-            $table->foreign('currency')->references('name')->on('currencies')->onDelete('restrict');
+            // Foreign key will be added in a separate migration after currencies table is created
         });
     }
 
