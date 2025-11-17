@@ -133,5 +133,83 @@ class AuthController extends Controller
             ], 401);
         }
     }
+
+    /**
+     * Request password reset.
+     * 
+     * Sends a password reset token to the user's email address. 
+     * For security reasons, this endpoint always returns success even if the email doesn't exist.
+     * 
+     * @param Request $request
+     * @param string $request->email Required. User email address.
+     * 
+     * @return JsonResponse Returns success message.
+     * 
+     * @example {
+     *   "email": "user@example.com"
+     * }
+     */
+    public function requestPasswordReset(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => 'required|email', // User email address
+        ]);
+
+        try {
+            $this->authService->requestPasswordReset($validated['email']);
+
+            return response()->json([
+                'message' => 'If the email exists, a password reset link has been sent.',
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Reset password using token.
+     * 
+     * Resets the user's password using a valid reset token received via email.
+     * The token expires after 60 minutes.
+     * 
+     * @param Request $request
+     * @param string $request->email Required. User email address.
+     * @param string $request->token Required. Password reset token from email.
+     * @param string $request->password Required. New password (minimum 8 characters).
+     * 
+     * @return JsonResponse Returns success message.
+     * 
+     * @example {
+     *   "email": "user@example.com",
+     *   "token": "abc123...",
+     *   "password": "newpassword123"
+     * }
+     */
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'email' => 'required|email', // User email address
+            'token' => 'required|string', // Password reset token
+            'password' => 'required|string|min:8', // New password (minimum 8 characters)
+        ]);
+
+        try {
+            $this->authService->resetPassword(
+                $validated['email'],
+                $validated['token'],
+                $validated['password']
+            );
+
+            return response()->json([
+                'message' => 'Password has been reset successfully.',
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
 }
 

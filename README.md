@@ -74,9 +74,10 @@ php artisan db:seed
 
 - [x] Laravel 项目初始化（DDD 分层）
 - [x] JWT 认证（注册/登录/刷新）
+- [x] 密码重置功能（用户自助重置、管理员重置）
 - [x] 中间件：Idempotency、RateLimit、Auth
-- [x] 数据库表：users, user_profiles, user_kyc, system_configs, audit_logs
-- [x] 控制器：AuthController, KycController, SystemConfigController, MeController
+- [x] 数据库表：users, user_profiles, user_kyc, system_configs, audit_logs, password_reset_tokens
+- [x] 控制器：AuthController, KycController, SystemConfigController, MeController, AdminUserController
 - [x] 管理员种子数据
 - [ ] 单元测试（进行中）
 
@@ -112,6 +113,8 @@ php artisan db:seed
 - `POST /api/v1/auth/register` - 注册
 - `POST /api/v1/auth/login` - 登录
 - `POST /api/v1/auth/refresh` - 刷新令牌
+- `POST /api/v1/auth/password/request-reset` - 请求密码重置（发送重置邮件）
+- `POST /api/v1/auth/password/reset` - 使用令牌重置密码
 - `GET /api/v1/me` - 获取当前用户信息
 
 ### KYC 相关
@@ -123,6 +126,10 @@ php artisan db:seed
 ### 系统配置
 
 - `GET /api/v1/system/configs` - 获取系统配置（只读）
+
+### 管理员接口（需要管理员权限）
+
+- `POST /api/v1/admin/users/reset-password` - 管理员直接重置用户密码
 
 ## 开发指南
 
@@ -138,6 +145,33 @@ php artisan test
 
 ```bash
 ./vendor/bin/pint
+```
+
+### 命令行工具
+
+#### 重置用户密码
+
+通过命令行直接重置用户密码：
+
+```bash
+php artisan user:reset-password {email} {password}
+```
+
+**参数说明**：
+- `email`: 用户邮箱地址（必需）
+- `password`: 新密码（必需，至少8个字符）
+
+**选项**：
+- `--force`: 跳过确认提示，直接执行
+
+**示例**：
+
+```bash
+# 交互式重置（会显示用户信息并要求确认）
+php artisan user:reset-password user@example.com newpassword123
+
+# 强制重置（跳过确认）
+php artisan user:reset-password user@example.com newpassword123 --force
 ```
 
 ## 默认管理员账号

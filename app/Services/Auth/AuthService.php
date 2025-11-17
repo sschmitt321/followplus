@@ -3,6 +3,8 @@
 namespace App\Services\Auth;
 
 use App\Models\User;
+use App\Notifications\ResetPasswordNotification;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use PHPOpenSourceSaver\JWTAuth\Facades\JWTAuth;
@@ -111,6 +113,99 @@ class AuthService
         } while (User::where('invite_code', $code)->exists());
 
         return $code;
+    }
+
+    /**
+     * Request password reset.
+     * 
+     * Sends a password reset token to the user's email.
+     */
+    public function requestPasswordReset(string $email): void
+    {
+        $user = User::where('email', $email)->first();
+
+        // Don't reveal if user exists or not (security best practice)
+        if (!$user) {
+            return;
+        }
+
+        // Generate reset token
+        $token = Str::random(64);
+        
+        // Store token in password_reset_tokens table
+        DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $email],
+            [
+                'token' => Hash::make($token),
+                'created_at' => now(),
+            ]
+        );
+
+        // Send notification with reset link
+        $user->notify(new ResetPasswordNotification($token));
+    }
+
+    /**
+     * Reset password using token.
+     */
+    public function resetPassword(string $email, string $token, string $newPassword): void
+    {
+        // Find reset record
+        $record = DB::table('password_reset_tokens')
+            ->where('email', $email)
+            ->first();
+
+        if (!$record) {
+            throw new \Exception('Invalid reset token');
+        }
+
+        // Check if token is expired (60 minutes)
+        if (now()->diffInMinutes($record->created_at) > 60) {
+            DB::table('password_reset_tokens')->where('email', $email)->delete();
+            throw new \Exception('Reset token has expired');
+        }
+
+        // Verify token
+        if (!Hash::check($token, $record->token)) {
+            throw new \Exception('Invalid reset token');
+        }
+
+        // Find user
+        $user = User::where('email', $email)->first();
+        if (!$user) {
+            throw new \Exception('User not found');
+        }
+
+        // Update password
+        $user->update([
+            'password_hash' => Hash::make($newPassword, ['memory' => 65536, 'time' => 4, 'threads' => 3]),
+        ]);
+
+        // Delete reset token
+        DB::table('password_reset_tokens')->where('email', $email)->delete();
+    }
+
+    /**
+     * Admin reset password (directly reset without token).
+     * 
+     * This method allows administrators to reset a user's password directly.
+     */
+    public function adminResetPassword(string $email, string $newPassword): void
+    {
+        $user = User::where('email', $email)->first();
+
+        if (!$user) {
+            throw new \Exception('User not found');
+        }
+
+        // Update password
+        $user->update([
+            'password_hash' => Hash::make($newPassword, ['memory' => 65536, 'time' => 4, 'threads' => 3]),
+        ]);
+
+        // Invalidate all refresh tokens for this user
+        // Note: This would require tracking refresh tokens per user, 
+        // which is not currently implemented. Consider implementing if needed.
     }
 
     /**

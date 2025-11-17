@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\Admin\AdminDepositController;
 use App\Http\Controllers\Api\V1\Admin\AdminFollowController;
 use App\Http\Controllers\Api\V1\Admin\AdminReferralController;
 use App\Http\Controllers\Api\V1\Admin\AdminSystemController;
+use App\Http\Controllers\Api\V1\Admin\AdminUserController;
 use App\Http\Controllers\Api\V1\Admin\AdminWithdrawController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\DepositController;
@@ -25,6 +26,8 @@ Route::prefix('v1')->middleware(['rate.limit'])->group(function () {
     Route::post('/auth/register', [AuthController::class, 'register'])->middleware('idempotency');
     Route::post('/auth/login', [AuthController::class, 'login'])->middleware('idempotency');
     Route::post('/auth/refresh', [AuthController::class, 'refresh'])->middleware('idempotency');
+    Route::post('/auth/password/request-reset', [AuthController::class, 'requestPasswordReset'])->middleware('idempotency');
+    Route::post('/auth/password/reset', [AuthController::class, 'resetPassword'])->middleware('idempotency');
 
     // Protected routes
     Route::middleware(['auth:api'])->group(function () {
@@ -100,6 +103,9 @@ Route::prefix('v1')->middleware(['rate.limit'])->group(function () {
 
             // System admin routes
             Route::post('/system/announcement', [AdminSystemController::class, 'announcement']);
+
+            // User admin routes
+            Route::post('/users/reset-password', [AdminUserController::class, 'resetPassword'])->middleware('idempotency');
         });
     });
 });
