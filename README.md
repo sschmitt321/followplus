@@ -123,6 +123,18 @@ php artisan db:seed
 - `POST /api/v1/kyc/basic` - 提交基础 KYC
 - `POST /api/v1/kyc/advanced` - 提交高级 KYC
 
+### 市场数据（CoinGecko）
+
+- `GET /api/v1/tokens/price` - 查询代币价格和涨跌幅
+  - 查询参数：
+    - `tokens` (可选): 逗号分隔的代币符号，如 `BTC,ETH,BNB`。如果不提供，返回默认代币（BTC, ETH, BNB, SOL, XRP）
+    - `vs_currency` (可选): 目标货币，默认为 `usdt`
+  - 示例：
+    - `/api/v1/tokens/price` - 查询默认代币
+    - `/api/v1/tokens/price?tokens=BTC` - 查询单个代币
+    - `/api/v1/tokens/price?tokens=BTC,ETH,BNB` - 批量查询
+    - `/api/v1/tokens/price?tokens=BTC&vs_currency=usd` - 查询相对于 USD 的价格
+
 ### 系统配置
 
 - `GET /api/v1/system/configs` - 获取系统配置（只读）

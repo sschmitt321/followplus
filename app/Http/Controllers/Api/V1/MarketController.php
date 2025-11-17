@@ -4,13 +4,16 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Symbol;
+use App\Services\Market\CoinGeckoService;
 use App\Services\Market\MarketService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class MarketController extends Controller
 {
     public function __construct(
-        private MarketService $marketService
+        private MarketService $marketService,
+        private CoinGeckoService $coinGeckoService
     ) {
     }
 
@@ -96,6 +99,74 @@ class MarketController extends Controller
             'symbol_id' => $symbol->id,
             'symbol' => $symbol->name,
             'history' => $history,
+        ]);
+    }
+
+    /**
+     * Get token price from CoinGecko.
+     * 
+     * Queries CoinGecko API to get real-time price and 24h change for a token.
+     * Supports single token query or batch query (comma-separated).
+     * If no tokens provided, returns default tokens (BTC, ETH, BNB, SOL, XRP).
+     * 
+     * @param Request $request Query parameters
+     * @param string|null $request->tokens Optional. Comma-separated token symbols (e.g., "BTC,ETH,BNB"). If not provided, returns default tokens.
+     * @param string|null $request->vs_currency Optional. Target currency (default: "usdt")
+     * 
+     * @return JsonResponse Returns price data with symbol, price, and 24h change
+     * 
+     * Query examples:
+     * - ?tokens=BTC (single token)
+     * - ?tokens=BTC,ETH,BNB (multiple tokens)
+     * - (no params) - returns default tokens
+     */
+    public function tokenPrice(Request $request): JsonResponse
+    {
+        $tokensParam = $request->input('tokens');
+        $vsCurrency = strtolower($request->input('vs_currency', 'usdt'));
+
+        // If no tokens provided, use default tokens
+        if (empty($tokensParam)) {
+            $prices = $this->coinGeckoService->getDefaultPrices($vsCurrency);
+            
+            // Convert object to array for better frontend compatibility
+            $pricesArray = array_values($prices);
+            
+            return response()->json([
+                'vs_currency' => $vsCurrency,
+                'prices' => $pricesArray,
+                'prices_map' => $prices, // Keep object format for backward compatibility
+                'message' => 'Default tokens queried',
+            ]);
+        }
+
+        // Parse comma-separated tokens
+        $tokens = array_map('trim', explode(',', $tokensParam));
+        $tokens = array_filter($tokens); // Remove empty values
+
+        if (empty($tokens)) {
+            return response()->json([
+                'error' => 'Invalid tokens parameter',
+            ], 400);
+        }
+
+        // Limit to 50 tokens per request
+        if (count($tokens) > 50) {
+            return response()->json([
+                'error' => 'Maximum 50 tokens per request',
+            ], 400);
+        }
+
+        // Get prices
+        $prices = $this->coinGeckoService->getPrices($tokens, $vsCurrency);
+
+        // Convert object to array for better frontend compatibility
+        $pricesArray = array_values($prices);
+
+        return response()->json([
+            'vs_currency' => $vsCurrency,
+            'prices' => $pricesArray,
+            'prices_map' => $prices, // Keep object format for backward compatibility
         ]);
     }
 }

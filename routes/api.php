@@ -29,6 +29,9 @@ Route::prefix('v1')->middleware(['rate.limit'])->group(function () {
     Route::post('/auth/password/request-reset', [AuthController::class, 'requestPasswordReset'])->middleware('idempotency');
     Route::post('/auth/password/reset', [AuthController::class, 'resetPassword'])->middleware('idempotency');
 
+    // Public market routes
+    Route::get('/tokens/price', [MarketController::class, 'tokenPrice']);
+
     // Protected routes
     Route::middleware(['auth:api'])->group(function () {
         Route::get('/me', [MeController::class, 'index']);
