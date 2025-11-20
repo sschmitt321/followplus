@@ -35,4 +35,17 @@ return [
         ],
     ],
 
+    'tron' => [
+        'node_url' => env('TRON_NODE_URL', 'https://api.trongrid.io'),
+        'api_key' => env('TRON_API_KEY', ''),
+        'usdt_contract' => env('TRON_USDT_CONTRACT', 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'),
+        'encryption_key' => env('TRON_PK_ENC_KEY', ''),
+        'hot_wallet_address' => env('TRON_HOT_WALLET_ADDRESS', ''),
+        'hot_wallet_private_key' => env('TRON_HOT_WALLET_PRIVATE_KEY', ''),
+        'gas_bank_private_key' => env('TRON_GAS_BANK_PRIVATE_KEY', ''),
+        'required_confirmations' => env('TRON_REQUIRED_CONFIRMATIONS', 20),
+        'min_sweep_amount' => env('TRON_MIN_SWEEP_AMOUNT', 50.0),
+        'min_trx_balance' => env('TRON_MIN_TRX_BALANCE', 1.0),
+    ],
+
 ];

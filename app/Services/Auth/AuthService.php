@@ -4,6 +4,8 @@ namespace App\Services\Auth;
 
 use App\Models\User;
 use App\Notifications\ResetPasswordNotification;
+use App\Services\Tron\TronHdWalletService;
+use App\Services\Tron\TronWalletService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -11,6 +13,11 @@ use PHPOpenSourceSaver\JWTAuth\Facades\JWTAuth;
 
 class AuthService
 {
+    public function __construct(
+        private ?TronHdWalletService $hdWalletService = null,
+        private ?TronWalletService $tronWalletService = null
+    ) {
+    }
     /**
      * Register a new user.
      */
@@ -53,6 +60,21 @@ class AuthService
             'level' => 'none',
             'status' => 'pending',
         ]);
+
+        // Generate Tron wallet address for user
+        // Use the same logic as getOrCreateDepositAddress to ensure consistency
+        if ($this->tronWalletService) {
+            try {
+                $this->tronWalletService->getOrCreateDepositAddress($user->id);
+            } catch (\Exception $e) {
+                // Log error but don't fail registration
+                // Wallet will be created when user first calls getOrCreateDepositAddress
+                \Log::error('Failed to generate Tron address for user during registration', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         // Generate tokens
         $token = JWTAuth::fromUser($user);

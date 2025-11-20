@@ -70,6 +70,7 @@ Route::prefix('v1')->middleware(['rate.limit'])->group(function () {
 
         // Deposit routes
         Route::get('/deposits', [DepositController::class, 'index']);
+        Route::get('/deposits/tron-address', [DepositController::class, 'getTronAddress']);
         Route::post('/deposits/manual-apply', [DepositController::class, 'manualApply'])->middleware('idempotency');
 
         // Withdrawal routes

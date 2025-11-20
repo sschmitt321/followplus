@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\RefReward;
 use App\Models\RefStat;
+use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -35,22 +36,26 @@ class ReferralController extends Controller
         $stat = RefStat::where('user_id', $user->id)->first();
         
         if (!$stat) {
-            // Create default stat
+            // Create default stat with total_rewards set to 0
             $stat = RefStat::create([
                 'user_id' => $user->id,
                 'direct_count' => 0,
                 'team_count' => 0,
                 'ambassador_level' => 'L0',
                 'dividend_rate' => 0,
+                'total_rewards' => '0.000000', // Ensure total_rewards is not null
             ]);
         }
+
+        // Ensure total_rewards is not null (handle case where it might be null in database)
+        $totalRewards = $stat->total_rewards ?? Decimal::zero();
 
         return response()->json([
             'direct_count' => $stat->direct_count,
             'team_count' => $stat->team_count,
             'level' => $stat->ambassador_level,
             'dividend_rate' => (float) $stat->dividend_rate,
-            'total_rewards' => $stat->total_rewards->toFixed(6),
+            'total_rewards' => $totalRewards->toFixed(6),
         ]);
     }
 

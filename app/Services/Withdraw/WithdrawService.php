@@ -8,6 +8,7 @@ use App\Services\Assets\AssetsService;
 use App\Services\Ledger\LedgerService;
 use App\Services\Referral\ReferralService;
 use App\Services\System\ConfigService;
+use App\Services\Tron\TronWithdrawalService;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 
@@ -19,7 +20,8 @@ class WithdrawService
         private LedgerService $ledgerService,
         private AssetsService $assetsService,
         private ConfigService $configService,
-        private ?ReferralService $referralService = null
+        private ?ReferralService $referralService = null,
+        private ?TronWithdrawalService $tronWithdrawalService = null
     ) {
     }
 
@@ -162,6 +164,20 @@ class WithdrawService
             
             if ($withdrawal->status !== 'approved') {
                 throw new \Exception('Withdrawal must be approved first');
+            }
+
+            // If this is a Tron withdrawal and no txid provided, try to send it
+            if ($withdrawal->chain === 'TRC20' && $withdrawal->currency === 'USDT' && empty($txid)) {
+                if ($this->tronWithdrawalService) {
+                    $txid = $this->tronWithdrawalService->sendFromHotWallet(
+                        $withdrawal->to_address,
+                        (float) $withdrawal->amount_actual->toFixed(6)
+                    );
+                    
+                    if (empty($txid)) {
+                        throw new \Exception('Failed to send Tron withdrawal transaction');
+                    }
+                }
             }
 
             // Unfreeze first

@@ -25,36 +25,103 @@ class AssetsService
 
     /**
      * Update user assets summary.
+     * 
+     * Handles deadlocks with retry mechanism.
      */
     public function updateSummary(int $userId): UserAssetsSummary
     {
-        return DB::transaction(function () use ($userId) {
-            $accounts = Account::where('user_id', $userId)->get();
-            
-            $totalBalance = Decimal::zero();
-            $principalBalance = Decimal::zero();
-            $profitBalance = Decimal::zero();
-            $bonusBalance = Decimal::zero();
+        $maxRetries = 3;
+        $retryCount = 0;
 
-            foreach ($accounts as $account) {
-                $balance = $account->available->add($account->frozen);
-                $totalBalance = $totalBalance->add($balance);
+        while ($retryCount < $maxRetries) {
+            try {
+                return DB::transaction(function () use ($userId) {
+                    // Calculate balances first (outside of lock)
+                    $accounts = Account::where('user_id', $userId)->get();
+                    
+                    $totalBalance = Decimal::zero();
+                    $principalBalance = Decimal::zero();
+                    $profitBalance = Decimal::zero();
+                    $bonusBalance = Decimal::zero();
+
+                    foreach ($accounts as $account) {
+                        $balance = $account->available->add($account->frozen);
+                        $totalBalance = $totalBalance->add($balance);
+                        
+                        // TODO: 根据业务类型区分本金、利润、奖励
+                        // 这里先全部算作本金
+                        $principalBalance = $principalBalance->add($balance);
+                    }
+
+                    // Use updateOrCreate which handles concurrency better
+                    // It will try to update first, and only create if record doesn't exist
+                    return UserAssetsSummary::updateOrCreate(
+                        ['user_id' => $userId],
+                        [
+                            'total_balance' => $totalBalance->toFixed(6),
+                            'principal_balance' => $principalBalance->toFixed(6),
+                            'profit_balance' => $profitBalance->toFixed(6),
+                            'bonus_balance' => $bonusBalance->toFixed(6),
+                        ]
+                    );
+                });
+            } catch (\Illuminate\Database\QueryException $e) {
+                // Handle deadlock (1213) or duplicate key (1062)
+                $isDeadlock = $e->getCode() === '40001' && str_contains($e->getMessage(), '1213');
+                $isDuplicateKey = $e->getCode() === '23000' && str_contains($e->getMessage(), '1062');
                 
-                // TODO: 根据业务类型区分本金、利润、奖励
-                // 这里先全部算作本金
-                $principalBalance = $principalBalance->add($balance);
+                if ($isDeadlock || $isDuplicateKey) {
+                    $retryCount++;
+                    
+                    if ($retryCount >= $maxRetries) {
+                        // Last retry: if duplicate key, try to get existing record and update
+                        if ($isDuplicateKey) {
+                            $summary = UserAssetsSummary::where('user_id', $userId)->first();
+                            if ($summary) {
+                                // Recalculate and update
+                                $accounts = Account::where('user_id', $userId)->get();
+                                $totalBalance = Decimal::zero();
+                                $principalBalance = Decimal::zero();
+                                $profitBalance = Decimal::zero();
+                                $bonusBalance = Decimal::zero();
+                                
+                                foreach ($accounts as $account) {
+                                    $balance = $account->available->add($account->frozen);
+                                    $totalBalance = $totalBalance->add($balance);
+                                    $principalBalance = $principalBalance->add($balance);
+                                }
+                                
+                                $summary->update([
+                                    'total_balance' => $totalBalance->toFixed(6),
+                                    'principal_balance' => $principalBalance->toFixed(6),
+                                    'profit_balance' => $profitBalance->toFixed(6),
+                                    'bonus_balance' => $bonusBalance->toFixed(6),
+                                ]);
+                                return $summary->fresh();
+                            }
+                        }
+                        throw new \Exception('Failed to update summary after ' . $maxRetries . ' retries', 0, $e);
+                    }
+                    
+                    // Wait a random amount of time before retrying (exponential backoff)
+                    $delay = rand(10000, 50000) * $retryCount;
+                    usleep($delay);
+                    
+                    \Log::warning('AssetsService: Deadlock or duplicate key detected, retrying', [
+                        'user_id' => $userId,
+                        'retry' => $retryCount,
+                        'delay_us' => $delay,
+                        'error_code' => $e->getCode(),
+                    ]);
+                    continue;
+                }
+                
+                // Re-throw if it's not a deadlock or duplicate key error
+                throw $e;
             }
-
-            return UserAssetsSummary::updateOrCreate(
-                ['user_id' => $userId],
-                [
-                    'total_balance' => $totalBalance->toFixed(6),
-                    'principal_balance' => $principalBalance->toFixed(6),
-                    'profit_balance' => $profitBalance->toFixed(6),
-                    'bonus_balance' => $bonusBalance->toFixed(6),
-                ]
-            );
-        });
+        }
+        
+        throw new \Exception('Failed to update summary after retries');
     }
 
     /**

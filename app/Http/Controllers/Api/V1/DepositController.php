@@ -5,13 +5,15 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\Deposit;
 use App\Services\Deposit\DepositService;
+use App\Services\Tron\TronWalletService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class DepositController extends Controller
 {
     public function __construct(
-        private DepositService $depositService
+        private DepositService $depositService,
+        private TronWalletService $tronWalletService
     ) {
     }
 
@@ -97,6 +99,33 @@ class DepositController extends Controller
             return response()->json([
                 'error' => $e->getMessage(),
             ], 400);
+        }
+    }
+
+    /**
+     * Get Tron deposit address.
+     * 
+     * Returns the user's TRC20 USDT deposit address. If the user doesn't have one yet,
+     * a new address will be generated and assigned.
+     * 
+     * @return JsonResponse Returns deposit address information
+     */
+    public function getTronAddress(): JsonResponse
+    {
+        try {
+            $user = auth()->user();
+            $address = $this->tronWalletService->getOrCreateDepositAddress($user->id);
+
+            return response()->json([
+                'address' => $address,
+                'chain' => 'TRC20',
+                'currency' => 'USDT',
+                'qr_code' => null, // TODO: Generate QR code if needed
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+            ], 500);
         }
     }
 }
