@@ -211,5 +211,62 @@ class AuthController extends Controller
             ], 400);
         }
     }
+
+    /**
+     * Change password for authenticated user.
+     * 
+     * Allows authenticated users to change their password by providing the old password
+     * and a new password. This endpoint requires the user to be logged in.
+     * 
+     * @param Request $request
+     * @param string $request->old_password Required. Current password for verification.
+     * @param string $request->password Required. New password (minimum 8 characters).
+     * 
+     * @return JsonResponse Returns success message.
+     * 
+     * @example {
+     *   "old_password": "oldpassword123",
+     *   "password": "newpassword123"
+     * }
+     */
+    public function changePassword(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'old_password' => 'required|string', // Current password for verification
+            'password' => 'required|string|min:8', // New password (minimum 8 characters)
+        ]);
+
+        try {
+            $user = auth()->user();
+
+            // Verify old password
+            if (!\Illuminate\Support\Facades\Hash::check($validated['old_password'], $user->password_hash)) {
+                throw ValidationException::withMessages([
+                    'old_password' => ['Current password is incorrect'],
+                ]);
+            }
+
+            // Update password
+            $user->update([
+                'password_hash' => \Illuminate\Support\Facades\Hash::make(
+                    $validated['password'],
+                    ['memory' => 65536, 'time' => 4, 'threads' => 3]
+                ),
+            ]);
+
+            return response()->json([
+                'message' => 'Password has been changed successfully.',
+            ], 200);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
 }
 

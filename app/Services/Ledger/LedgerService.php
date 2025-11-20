@@ -21,41 +21,57 @@ class LedgerService
         ?int $refId = null,
         ?array $meta = null
     ): LedgerEntry {
-        return DB::transaction(function () use ($userId, $accountType, $currency, $amount, $bizType, $refId, $meta) {
-            $amount = Decimal::of($amount);
-            
-            // Get or create account
-            $account = Account::firstOrCreate(
-                [
-                    'user_id' => $userId,
-                    'type' => $accountType,
-                    'currency' => $currency,
-                ],
-                [
-                    'available' => '0',
-                    'frozen' => '0',
-                ]
-            );
-
-            // Update balance
-            $newBalance = $account->available->add($amount);
-            $account->available = $newBalance->toFixed(6);
-            $account->save();
-
-            // Create ledger entry
-            $account->refresh(); // Reload to get updated balance
-            return LedgerEntry::create([
+        $amount = Decimal::of($amount);
+        
+        // Get or create account (must be in transaction for lockForUpdate to work)
+        $account = Account::firstOrCreate(
+            [
                 'user_id' => $userId,
-                'account_id' => $account->id,
+                'type' => $accountType,
                 'currency' => $currency,
-                'amount' => $amount->toFixed(6),
-                'balance_after' => $account->available->toFixed(6),
-                'biz_type' => $bizType,
-                'ref_id' => $refId,
-                'meta_json' => $meta,
-                'created_at' => now(),
-            ]);
-        });
+            ],
+            [
+                'available' => '0',
+                'frozen' => '0',
+            ]
+        );
+        
+        // Lock and reload the account to ensure we have the latest balance
+        $account = Account::where('id', $account->id)->lockForUpdate()->first();
+        
+        // Auto-create the opposite account type if it doesn't exist
+        // This ensures users always have both spot and contract accounts for each currency
+        $oppositeType = $accountType === 'spot' ? 'contract' : 'spot';
+        Account::firstOrCreate(
+            [
+                'user_id' => $userId,
+                'type' => $oppositeType,
+                'currency' => $currency,
+            ],
+            [
+                'available' => '0',
+                'frozen' => '0',
+            ]
+        );
+
+        // Update balance
+        $newBalance = $account->available->add($amount);
+        $account->available = $newBalance->toFixed(6);
+        $account->save();
+
+        // Create ledger entry
+        $account->refresh(); // Reload to get updated balance
+        return LedgerEntry::create([
+            'user_id' => $userId,
+            'account_id' => $account->id,
+            'currency' => $currency,
+            'amount' => $amount->toFixed(6),
+            'balance_after' => $account->available->toFixed(6),
+            'biz_type' => $bizType,
+            'ref_id' => $refId,
+            'meta_json' => $meta,
+            'created_at' => now(),
+        ]);
     }
 
     /**
@@ -70,40 +86,42 @@ class LedgerService
         ?int $refId = null,
         ?array $meta = null
     ): LedgerEntry {
-        return DB::transaction(function () use ($userId, $accountType, $currency, $amount, $bizType, $refId, $meta) {
-            $amount = Decimal::of($amount);
-            
-            // Get account
-            $account = Account::where([
-                'user_id' => $userId,
-                'type' => $accountType,
-                'currency' => $currency,
-            ])->lockForUpdate()->firstOrFail();
+        $amount = Decimal::of($amount);
+        
+        // Get account with lock
+        $account = Account::where([
+            'user_id' => $userId,
+            'type' => $accountType,
+            'currency' => $currency,
+        ])->lockForUpdate()->first();
+        
+        if (!$account) {
+            throw new \Exception("Account not found: {$accountType} account for {$currency} does not exist");
+        }
 
-            // Check balance
-            if ($account->available->lessThan($amount)) {
-                throw new \Exception('Insufficient balance');
-            }
+        // Check balance
+        if ($account->available->lessThan($amount)) {
+            throw new \Exception('Insufficient balance');
+        }
 
-            // Update balance
-            $newBalance = $account->available->subtract($amount);
-            $account->available = $newBalance->toFixed(6);
-            $account->save();
+        // Update balance
+        $newBalance = $account->available->subtract($amount);
+        $account->available = $newBalance->toFixed(6);
+        $account->save();
 
-            // Create ledger entry (negative amount)
-            $account->refresh(); // Reload to get updated balance
-            return LedgerEntry::create([
-                'user_id' => $userId,
-                'account_id' => $account->id,
-                'currency' => $currency,
-                'amount' => $amount->negate()->toFixed(6),
-                'balance_after' => $account->available->toFixed(6),
-                'biz_type' => $bizType,
-                'ref_id' => $refId,
-                'meta_json' => $meta,
-                'created_at' => now(),
-            ]);
-        });
+        // Create ledger entry (negative amount)
+        $account->refresh(); // Reload to get updated balance
+        return LedgerEntry::create([
+            'user_id' => $userId,
+            'account_id' => $account->id,
+            'currency' => $currency,
+            'amount' => $amount->negate()->toFixed(6),
+            'balance_after' => $account->available->toFixed(6),
+            'biz_type' => $bizType,
+            'ref_id' => $refId,
+            'meta_json' => $meta,
+            'created_at' => now(),
+        ]);
     }
 
     /**

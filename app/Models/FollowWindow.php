@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Casts\MoneyCast;
+use App\Support\TimeHelper;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -61,10 +62,14 @@ class FollowWindow extends Model
      */
     public function isActive(): bool
     {
-        $now = now();
+        $now = TimeHelper::now();
+        // Convert window times to UTC+8 for comparison
+        $startAtUtc8 = $this->start_at->setTimezone('Asia/Shanghai');
+        $expireAtUtc8 = $this->expire_at->setTimezone('Asia/Shanghai');
+        
         return $this->status === 'active' 
-            && $now->gte($this->start_at) 
-            && $now->lte($this->expire_at);
+            && $now->gte($startAtUtc8) 
+            && $now->lte($expireAtUtc8);
     }
 }
 

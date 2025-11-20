@@ -8,6 +8,7 @@ use App\Services\Follow\FollowQuotaService;
 use App\Support\Decimal;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class FollowController extends Controller
 {
@@ -34,7 +35,9 @@ class FollowController extends Controller
     {
         $date = $request->input('date', now()->format('Y-m-d')); // Date in YYYY-MM-DD format (default: today)
         
-        $windows = $this->followService->getAvailableWindows($date);
+        // Pass user ID to filter windows by permission
+        $userId = auth()->id();
+        $windows = $this->followService->getAvailableWindows($date, $userId);
         
         return response()->json([
             'date' => $date,
@@ -45,12 +48,11 @@ class FollowController extends Controller
     /**
      * Place a follow order.
      * 
-     * Creates a follow order for the specified window. The actual investment amount is calculated
-     * as 1% of user's total assets. The amount_input parameter is only used for audit purposes.
+     * Creates a follow order for the specified window. The window and symbol are determined
+     * automatically from the invite_token. The actual investment amount is calculated as 1% of
+     * user's total assets. The amount_input parameter is only used for audit purposes.
      * 
      * @param Request $request
-     * @param int $request->follow_window_id Required. ID of the follow window to join. Window must be active and not expired.
-     * @param int $request->symbol_id Required. ID of the trading symbol (must match window's symbol).
      * @param string $request->invite_token Required. Valid invite token for the window (max 64 characters).
      * @param string|null $request->amount_input Optional. User's intended amount (for audit only, actual amount is 1% of total assets).
      * 
@@ -58,31 +60,83 @@ class FollowController extends Controller
      * 
      * Request example:
      * {
-     *   "follow_window_id": 1,
-     *   "symbol_id": 1,
      *   "invite_token": "ABCD1234",
      *   "amount_input": "100"
      * }
      */
     public function placeOrder(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'follow_window_id' => 'required|integer|exists:follow_windows,id', // Follow window ID (must exist and be active)
-            'symbol_id' => 'required|integer|exists:symbols,id', // Trading symbol ID (must match window's symbol)
-            'invite_token' => 'required|string|max:64', // Invite token for the window (max 64 characters)
-            'amount_input' => 'nullable|string', // Optional user input amount (for audit only, actual amount = 1% of total assets)
-        ]);
-
         try {
+            // First validate basic rules - require invite_token
+            $validated = $request->validate([
+                'invite_token' => 'required|string|max:64', // Invite token for the window (max 64 characters)
+                'amount_input' => 'nullable|string', // Optional user input amount (for audit only, actual amount = 1% of total assets)
+            ]);
+
+            // Find the invite token and get the window ID
+            $inviteToken = $validated['invite_token'];
+            $token = \App\Models\InviteToken::where('token', $inviteToken)->first();
+            
+            if (!$token) {
+                \Log::warning('Follow order validation failed: invite token not found', [
+                    'user_id' => auth()->id(),
+                    'invite_token' => $inviteToken,
+                    'input' => $request->all(),
+                ]);
+
+                $isDevelopment = app()->environment(['local', 'testing']) || config('app.debug');
+                $response = [
+                    'error' => '跟单码错误或者未生效，请跟管理员确认',
+                ];
+
+                if ($isDevelopment) {
+                    $response['debug'] = [
+                        'message' => "Invite token '{$inviteToken}' not found",
+                        'suggestion' => 'Please check the invite token or call /api/v1/follow/windows to get available windows',
+                    ];
+                }
+
+                return response()->json($response, 422);
+            }
+
+            // Get the window from the token
+            $window = $token->followWindow;
+            if (!$window) {
+                \Log::warning('Follow order validation failed: window not found for token', [
+                    'user_id' => auth()->id(),
+                    'invite_token' => $inviteToken,
+                    'follow_window_id' => $token->follow_window_id,
+                ]);
+
+                return response()->json([
+                    'error' => '跟单码错误或者未生效，请跟管理员确认',
+                ], 422);
+            }
+
+            if ($window->status !== 'active') {
+                \Log::warning('Follow order validation failed: window not active', [
+                    'user_id' => auth()->id(),
+                    'follow_window_id' => $window->id,
+                    'window_status' => $window->status,
+                ]);
+
+                return response()->json([
+                    'error' => '跟单码错误或者未生效，请跟管理员确认',
+                ], 422);
+            }
+
+            // Get symbol_id from the window
+            $symbolId = $window->symbol_id;
+
             $amountInput = isset($validated['amount_input']) 
                 ? Decimal::of($validated['amount_input']) 
                 : null;
 
             $order = $this->followService->placeOrder(
                 auth()->id(),
-                $validated['follow_window_id'],
-                $validated['symbol_id'],
-                $validated['invite_token'],
+                $window->id,
+                $symbolId,
+                $inviteToken,
                 $amountInput
             );
 
@@ -92,13 +146,79 @@ class FollowController extends Controller
                     'id' => $order->id,
                     'amount_base' => $order->amount_base->toFixed(6),
                     'status' => $order->status,
-                    'created_at' => $order->created_at->toIso8601String(),
+                    'created_at' => $order->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
                 ],
             ], 201);
+
+        } catch (ValidationException $e) {
+            // Log validation errors
+            \Log::warning('Follow order validation failed', [
+                'user_id' => auth()->id(),
+                'errors' => $e->errors(),
+                'input' => $request->all(),
+            ]);
+
+            // Return user-friendly error message
+            $isDevelopment = app()->environment(['local', 'testing']) || config('app.debug');
+            
+            if ($isDevelopment) {
+                return response()->json([
+                    'error' => '跟单码错误或者未生效，请跟管理员确认',
+                    'debug' => [
+                        'validation_errors' => $e->errors(),
+                    ],
+                ], 422);
+            } else {
+                return response()->json([
+                    'error' => '跟单码错误或者未生效，请跟管理员确认',
+                ], 422);
+            }
         } catch (\Exception $e) {
-            return response()->json([
+            // Log detailed error for debugging
+            \Log::warning('Follow order failed', [
+                'user_id' => auth()->id(),
+                'invite_token' => $validated['invite_token'] ?? null,
                 'error' => $e->getMessage(),
-            ], 400);
+                'error_class' => get_class($e),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            // Return error message based on error type
+            $isDevelopment = app()->environment(['local', 'testing']) || config('app.debug');
+            $errorMessage = $e->getMessage();
+            
+            // Handle specific error messages
+            if (str_contains($errorMessage, 'already been used')) {
+                $userMessage = '该跟单码已被使用，每个跟单码只能使用一次';
+            } elseif (str_contains($errorMessage, 'Insufficient balance')) {
+                $userMessage = '账户余额不足';
+            } elseif (str_contains($errorMessage, 'Quota exhausted')) {
+                $userMessage = '今日跟单额度已用完';
+            } elseif (str_contains($errorMessage, 'permission')) {
+                $userMessage = '您没有权限参与此类型的跟单窗口';
+            } else {
+                $userMessage = '跟单码错误或者未生效，请跟管理员确认';
+            }
+            
+            if ($isDevelopment) {
+                // In development, return detailed error for debugging
+                return response()->json([
+                    'error' => $userMessage,
+                    'debug' => [
+                        'message' => $errorMessage,
+                        'error_class' => get_class($e),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                    ],
+                ], 400);
+            } else {
+                // In production, return user-friendly message only
+                return response()->json([
+                    'error' => $userMessage,
+                ], 400);
+            }
         }
     }
 
@@ -142,8 +262,9 @@ class FollowController extends Controller
                     'amount_base' => $order->amount_base->toFixed(6),
                     'profit' => $order->profit ? $order->profit->toFixed(6) : null,
                     'status' => $order->status,
-                    'settled_at' => $order->settled_at?->toIso8601String(),
-                    'created_at' => $order->created_at->toIso8601String(),
+                    'invite_token' => $order->invite_token,
+                    'settled_at' => $order->settled_at?->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
+                    'created_at' => $order->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
                 ];
             }),
             'pagination' => [

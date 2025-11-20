@@ -116,7 +116,8 @@ class WithdrawController extends Controller
                 $validated['amount'],
                 $validated['to_address'],
                 $validated['currency'] ?? 'USDT',
-                $validated['chain'] ?? null
+                $validated['chain'] ?? null,
+                $validated['withdraw_password']
             );
 
             return response()->json([

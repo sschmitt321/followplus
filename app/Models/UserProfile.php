@@ -15,6 +15,7 @@ class UserProfile extends Model
         'user_id',
         'name',
         'city',
+        'withdraw_address',
     ];
 
     public function user(): BelongsTo

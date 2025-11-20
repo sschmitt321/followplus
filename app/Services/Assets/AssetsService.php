@@ -59,18 +59,13 @@ class AssetsService
 
     /**
      * Get user assets summary.
+     * 
+     * Automatically updates the summary from account balances if needed.
      */
     public function getSummary(int $userId): UserAssetsSummary
     {
-        return UserAssetsSummary::firstOrCreate(
-            ['user_id' => $userId],
-            [
-                'total_balance' => '0',
-                'principal_balance' => '0',
-                'profit_balance' => '0',
-                'bonus_balance' => '0',
-            ]
-        );
+        // Always update summary from actual account balances to ensure accuracy
+        return $this->updateSummary($userId);
     }
 }
 

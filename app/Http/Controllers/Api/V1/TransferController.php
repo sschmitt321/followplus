@@ -55,7 +55,7 @@ class TransferController extends Controller
             );
 
             return response()->json([
-                'message' => 'Transfer completed successfully',
+                'message' => '转账成功',
                 'transfer' => [
                     'id' => $transfer->id,
                     'currency' => $transfer->currency,
@@ -66,8 +66,33 @@ class TransferController extends Controller
                 ],
             ], 200);
         } catch (\Exception $e) {
-            return response()->json([
+            // Log error for debugging
+            \Log::warning('Transfer failed', [
+                'user_id' => auth()->id(),
+                'from' => $validated['from'] ?? null,
+                'to' => $validated['to'] ?? null,
+                'currency' => $validated['currency'] ?? null,
+                'amount' => $validated['amount'] ?? null,
                 'error' => $e->getMessage(),
+            ]);
+
+            // Return user-friendly error message
+            $errorMessage = $e->getMessage();
+            
+            // Translate common error messages to Chinese
+            if (str_contains($errorMessage, 'does not exist') || str_contains($errorMessage, '账户不存在')) {
+                $errorMessage = '源账户不存在，请先充值或检查账户类型';
+            } elseif (str_contains($errorMessage, '账户余额不足')) {
+                // Keep the detailed error message that includes balance info
+                // Error message already contains balance details in Chinese
+            } elseif (str_contains($errorMessage, 'Insufficient balance')) {
+                $errorMessage = '账户余额不足';
+            } elseif (str_contains($errorMessage, 'same account type') || str_contains($errorMessage, '不能在同一账户类型间转账')) {
+                $errorMessage = '不能在同一账户类型间转账';
+            }
+            
+            return response()->json([
+                'error' => $errorMessage,
             ], 400);
         }
     }

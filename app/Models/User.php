@@ -22,6 +22,7 @@ class User extends Authenticatable implements JWTSubject
     protected $fillable = [
         'email',
         'password_hash',
+        'withdraw_password_hash',
         'invite_code',
         'invited_by_user_id',
         'ref_path',
@@ -38,6 +39,7 @@ class User extends Authenticatable implements JWTSubject
      */
     protected $hidden = [
         'password_hash',
+        'withdraw_password_hash',
         'remember_token',
     ];
 

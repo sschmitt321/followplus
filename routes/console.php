@@ -8,32 +8,33 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Schedule T+1 newbie rewards (daily at 00:10)
-Schedule::command('rewards:grant-newbie-next-day')
-    ->dailyAt('00:10')
-    ->withoutOverlapping()
-    ->runInBackground();
+// // Schedule T+1 newbie rewards (daily at 00:10)
+// Schedule::command('rewards:grant-newbie-next-day')
+//     ->dailyAt('00:10')
+//     ->withoutOverlapping()
+//     ->runInBackground();
 
-// Schedule dividend dispatch (weekly on Monday at 00:00)
-Schedule::command('rewards:dispatch-dividends')
-    ->weeklyOn(1, '00:00')
-    ->withoutOverlapping()
-    ->runInBackground();
+// // Schedule dividend dispatch (weekly on Monday at 00:00)
+// Schedule::command('rewards:dispatch-dividends')
+//     ->weeklyOn(1, '00:00')
+//     ->withoutOverlapping()
+//     ->runInBackground();
 
-// Schedule follow window generation (daily at 00:05)
-Schedule::command('follow:generate-windows')
-    ->dailyAt('00:05')
-    ->withoutOverlapping()
-    ->runInBackground();
+// // Schedule follow window generation (daily at 00:05)
+// Schedule::command('follow:generate-windows')
+//     ->dailyAt('00:05')
+//     ->withoutOverlapping()
+//     ->runInBackground();
 
-// Schedule follow order settlement (every hour)
+// // Schedule market tick generation (every minute)
+// Schedule::command('market:generate-ticks')
+//     ->everyMinute()
+//     ->withoutOverlapping()
+//     ->runInBackground();
+
+// Schedule follow order settlement (every minute)
 Schedule::command('follow:settle-orders')
-    ->hourly()
-    ->withoutOverlapping()
-    ->runInBackground();
-
-// Schedule market tick generation (every minute)
-Schedule::command('market:generate-ticks')
     ->everyMinute()
     ->withoutOverlapping()
-    ->runInBackground();
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/scheduler.log'));

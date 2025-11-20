@@ -63,11 +63,25 @@ class WithdrawService
         Decimal|string $amount,
         string $toAddress,
         string $currency = 'USDT',
-        ?string $chain = null
+        ?string $chain = null,
+        ?string $withdrawPassword = null
     ): Withdrawal {
-        return DB::transaction(function () use ($userId, $amount, $toAddress, $currency, $chain) {
+        return DB::transaction(function () use ($userId, $amount, $toAddress, $currency, $chain, $withdrawPassword) {
             $amount = Decimal::of($amount);
             $user = User::findOrFail($userId);
+            
+            // Verify withdrawal password
+            if (empty($user->withdraw_password_hash)) {
+                throw new \Exception('Withdrawal password not set');
+            }
+            
+            if (empty($withdrawPassword)) {
+                throw new \Exception('Withdrawal password is required');
+            }
+            
+            if (!\Illuminate\Support\Facades\Hash::check($withdrawPassword, $user->withdraw_password_hash)) {
+                throw new \Exception('Invalid withdrawal password');
+            }
             
             // Calculate fee
             $calc = $this->calcWithdrawable($userId);

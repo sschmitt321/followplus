@@ -15,6 +15,7 @@ class MeController extends Controller
      * - User profile information (name, city)
      * - KYC status (level and verification status)
      * - Assets summary (total balance, principal, profit, bonus)
+     * - User status flags (is_newbie, kyc_verified, has_withdraw_password, has_withdraw_address)
      * 
      * This endpoint is used to fetch the current user's profile and account overview.
      * 
@@ -23,7 +24,13 @@ class MeController extends Controller
      * - profile: User profile information (name, city) or null if not set
      * - kyc: KYC status (level, status) or null if not submitted
      * - role: User role (redundant with user.role)
-     * - assets: Assets summary with total_balance, principal_balance, profit_balance, bonus_balance
+     * - assets: Assets summary with total_balance, principal_balance, profit_balance, bonus_balance, and accounts (grouped by currency and account type)
+     *   - accounts: Object with currency as key, containing spot and contract account balances (available and frozen)
+     * - status: User status flags
+     *   - is_newbie: Whether user is newbie (joined within 7 days)
+     *   - kyc_verified: Whether user's identity is verified (KYC approved)
+     *   - has_withdraw_password: Whether withdrawal password is set
+     *   - has_withdraw_address: Whether withdrawal address is set
      */
     public function index(): JsonResponse
     {
@@ -34,6 +41,34 @@ class MeController extends Controller
         $summary = \App\Services\Assets\AssetsService::class;
         $assetsService = app($summary);
         $assetsSummary = $assetsService->getSummary($user->id);
+
+        // Get account balances grouped by currency and type
+        $accounts = \App\Models\Account::where('user_id', $user->id)
+            ->get()
+            ->groupBy('currency');
+
+        $accountBalances = [];
+        foreach ($accounts as $currency => $currencyAccounts) {
+            $spotAccount = $currencyAccounts->firstWhere('type', 'spot');
+            $contractAccount = $currencyAccounts->firstWhere('type', 'contract');
+
+            $accountBalances[$currency] = [
+                'spot' => [
+                    'available' => $spotAccount ? $spotAccount->available->toFixed(6) : '0.000000',
+                    'frozen' => $spotAccount ? $spotAccount->frozen->toFixed(6) : '0.000000',
+                ],
+                'contract' => [
+                    'available' => $contractAccount ? $contractAccount->available->toFixed(6) : '0.000000',
+                    'frozen' => $contractAccount ? $contractAccount->frozen->toFixed(6) : '0.000000',
+                ],
+            ];
+        }
+
+        // Calculate user status flags
+        $isNewbie = $this->isNewbie($user);
+        $kycVerified = $user->kyc && $user->kyc->status === 'approved';
+        $hasWithdrawPassword = !empty($user->withdraw_password_hash);
+        $hasWithdrawAddress = !empty($user->profile?->withdraw_address);
 
         return response()->json([
             'user' => [
@@ -58,7 +93,26 @@ class MeController extends Controller
                 'principal_balance' => $assetsSummary->principal_balance->toFixed(6),
                 'profit_balance' => $assetsSummary->profit_balance->toFixed(6),
                 'bonus_balance' => $assetsSummary->bonus_balance->toFixed(6),
+                'accounts' => $accountBalances, // 按币种和账户类型分组的余额
+            ],
+            'status' => [
+                'is_newbie' => $isNewbie,
+                'kyc_verified' => $kycVerified,
+                'has_withdraw_password' => $hasWithdrawPassword,
+                'has_withdraw_address' => $hasWithdrawAddress,
             ],
         ]);
+    }
+
+    /**
+     * Check if user is newbie (joined within 7 days).
+     */
+    private function isNewbie($user): bool
+    {
+        if (!$user->first_joined_at) {
+            return true;
+        }
+
+        return $user->first_joined_at->diffInDays(now()) <= 7;
     }
 }

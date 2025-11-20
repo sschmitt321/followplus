@@ -135,6 +135,27 @@ php artisan db:seed
     - `/api/v1/tokens/price?tokens=BTC,ETH,BNB` - 批量查询
     - `/api/v1/tokens/price?tokens=BTC&vs_currency=usd` - 查询相对于 USD 的价格
 
+- `GET /api/v1/tokens/ohlc` - 查询代币 K 线图数据（OHLC）
+  - 查询参数：
+    - `token` (必需): 代币符号，如 `BTC`, `ETH`
+    - `vs_currency` (可选): 目标货币，默认为 `usd`
+    - `days` (可选): 数据天数，默认为 `1`，最大 `365`（可以是小数）
+    - `interval` (可选): 期望的时间间隔，可选值：`5m`, `1h`, `1d`
+      - `5m` - 5 分钟间隔（最多 1 天数据）
+      - `1h` - 每小时间隔（1-90 天数据）
+      - `1d` - 每日间隔（90+ 天数据）
+  - 数据粒度（CoinGecko 自动根据 days 参数确定）：
+    - `days = 1`: 5 分钟间隔数据（约 288 根 K 线/天）
+    - `days = 1-90`: 每小时数据（24 根 K 线/天）
+    - `days > 90`: 每日数据（1 根 K 线/天，00:00 UTC）
+  - 示例：
+    - `/api/v1/tokens/ohlc?token=BTC` - 获取 BTC 1 天的 5 分钟 K 线数据
+    - `/api/v1/tokens/ohlc?token=BTC&interval=5m` - 明确指定 5 分钟间隔
+    - `/api/v1/tokens/ohlc?token=BTC&interval=1h&days=7` - 明确指定每小时间隔，7 天数据
+    - `/api/v1/tokens/ohlc?token=BTC&days=7` - 获取 BTC 7 天的每小时 K 线数据
+    - `/api/v1/tokens/ohlc?token=ETH&days=90&vs_currency=usdt` - 获取 ETH 90 天的每日 K 线数据
+    - `/api/v1/tokens/ohlc?token=ETH&interval=1d&days=365` - 明确指定每日间隔，365 天数据
+
 ### 系统配置
 
 - `GET /api/v1/system/configs` - 获取系统配置（只读）
@@ -184,6 +205,47 @@ php artisan user:reset-password user@example.com newpassword123
 
 # 强制重置（跳过确认）
 php artisan user:reset-password user@example.com newpassword123 --force
+```
+
+#### 创建跟单窗口和邀请码
+
+快速创建跟单窗口并自动生成邀请码：
+
+```bash
+php artisan follow:create-window-with-token {symbol_id} {window_type} {start_time} {duration_hours}
+```
+
+**参数说明**：
+- `symbol_id`: 交易对ID（必需）
+  - `1` = BTC/USDT
+  - `2` = ETH/USDT
+  - `3` = BNB/USDT
+  - `4` = SOL/USDT
+- `window_type`: 窗口类型（必需）
+  - `fixed_daily` = 固定每日窗口
+  - `newbie_bonus` = 新手奖励窗口
+  - `inviter_bonus` = 邀请者奖励窗口
+- `start_time`: 开始时间（必需）
+  - 格式：`YYYY-MM-DD HH:MM:SS` 或 `YYYY-MM-DD`
+  - 如果只提供日期，默认使用当前时间
+- `duration_hours`: 持续时间（小时，必需）
+
+**选项**：
+- `--token=`: 自定义邀请码（可选，不提供则自动生成8位大写字母）
+- `--reward-min=0.5`: 最小奖励率（0-1，默认0.5）
+- `--reward-max=0.6`: 最大奖励率（0-1，默认0.6）
+
+**示例**：
+
+```bash
+# 创建BTC/USDT的固定窗口，今天14:00开始，持续1小时
+php artisan follow:create-window-with-token 1 fixed_daily "2025-11-18 14:00:00" 1
+
+# 创建ETH/USDT的新手奖励窗口，使用自定义邀请码
+php artisan follow:create-window-with-token 2 newbie_bonus "2025-11-18 15:00:00" 2 --token="MYCODE123"
+
+# 创建BNB/USDT窗口，自定义奖励率
+php artisan follow:create-window-with-token 3 fixed_daily "2025-11-18 16:00:00" 1.5 --reward-min=0.6 --reward-max=0.8
 ```
 
 ## 默认管理员账号

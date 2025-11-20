@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\Admin\AdminDepositController;
 use App\Http\Controllers\Api\V1\Admin\AdminFollowController;
+use App\Http\Controllers\Api\V1\Admin\AdminKycController;
 use App\Http\Controllers\Api\V1\Admin\AdminReferralController;
 use App\Http\Controllers\Api\V1\Admin\AdminSystemController;
 use App\Http\Controllers\Api\V1\Admin\AdminUserController;
@@ -19,6 +20,7 @@ use App\Http\Controllers\Api\V1\SystemConfigController;
 use App\Http\Controllers\Api\V1\TransferController;
 use App\Http\Controllers\Api\V1\WalletsController;
 use App\Http\Controllers\Api\V1\WithdrawController;
+use App\Http\Controllers\Api\V1\WithdrawSettingsController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->middleware(['rate.limit'])->group(function () {
@@ -31,15 +33,23 @@ Route::prefix('v1')->middleware(['rate.limit'])->group(function () {
 
     // Public market routes
     Route::get('/tokens/price', [MarketController::class, 'tokenPrice']);
+    Route::get('/tokens/exchange-rate', [MarketController::class, 'exchangeRate']);
+    Route::get('/tokens/ohlc', [MarketController::class, 'ohlc']);
 
     // Protected routes
     Route::middleware(['auth:api'])->group(function () {
         Route::get('/me', [MeController::class, 'index']);
 
+        // Auth routes (authenticated)
+        Route::post('/auth/password/change', [AuthController::class, 'changePassword'])->middleware('idempotency');
+
         // KYC routes
         Route::get('/kyc/status', [KycController::class, 'status']);
-        Route::post('/kyc/basic', [KycController::class, 'submitBasic'])->middleware('idempotency');
-        Route::post('/kyc/advanced', [KycController::class, 'submitAdvanced'])->middleware('idempotency');
+        Route::post('/kyc/submit', [KycController::class, 'submit'])->middleware('idempotency');
+        Route::post('/kyc/basic', [KycController::class, 'submitBasic'])->middleware('idempotency'); // Deprecated
+        Route::post('/kyc/upload-image', [KycController::class, 'uploadImage']);
+        Route::get('/kyc/image/{type}', [KycController::class, 'getImage']);
+        Route::post('/kyc/advanced', [KycController::class, 'submitAdvanced'])->middleware('idempotency'); // Deprecated
 
         // System config routes (read-only)
         Route::get('/system/configs', [SystemConfigController::class, 'index']);
@@ -66,6 +76,11 @@ Route::prefix('v1')->middleware(['rate.limit'])->group(function () {
         Route::get('/withdrawals', [WithdrawController::class, 'index']);
         Route::get('/withdrawals/calc-withdrawable', [WithdrawController::class, 'calcWithdrawable']);
         Route::post('/withdrawals/apply', [WithdrawController::class, 'apply'])->middleware('idempotency');
+
+        // Withdrawal settings routes
+        Route::post('/withdraw/password', [WithdrawSettingsController::class, 'setPassword'])->middleware('idempotency');
+        Route::post('/withdraw/password/verify', [WithdrawSettingsController::class, 'verifyPassword']);
+        Route::post('/withdraw/address', [WithdrawSettingsController::class, 'setAddress'])->middleware('idempotency');
 
         // Transfer routes
         Route::post('/transfer', [TransferController::class, 'transfer'])->middleware('idempotency');
@@ -109,6 +124,12 @@ Route::prefix('v1')->middleware(['rate.limit'])->group(function () {
 
             // User admin routes
             Route::post('/users/reset-password', [AdminUserController::class, 'resetPassword'])->middleware('idempotency');
+
+            // KYC admin routes
+            Route::get('/kyc', [AdminKycController::class, 'index']);
+            Route::get('/kyc/{id}', [AdminKycController::class, 'show']);
+            Route::post('/kyc/{id}/approve', [AdminKycController::class, 'approve']);
+            Route::post('/kyc/{id}/reject', [AdminKycController::class, 'reject']);
         });
     });
 });

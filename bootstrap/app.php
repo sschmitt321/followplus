@@ -21,11 +21,21 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         // Handle authentication exceptions for API routes
         $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, \Illuminate\Http\Request $request) {
-            if ($request->is('api/*')) {
+            if ($request->is('api/*') || $request->expectsJson()) {
                 return response()->json([
                     'error' => 'Unauthenticated',
                     'message' => 'Authentication required',
                 ], 401);
+            }
+        });
+
+        // Handle route not found exceptions for API routes
+        $exceptions->render(function (\Symfony\Component\Routing\Exception\RouteNotFoundException $e, \Illuminate\Http\Request $request) {
+            if ($request->is('api/*') || $request->expectsJson()) {
+                return response()->json([
+                    'error' => 'Route not found',
+                    'message' => $e->getMessage(),
+                ], 404);
             }
         });
     })->create();

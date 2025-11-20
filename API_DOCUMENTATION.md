@@ -63,11 +63,41 @@ Scramble 会自动从以下内容生成文档：
 
 文档包含以下模块的所有端点：
 
+### 重要更新说明
+
+#### 用户状态查询 (`GET /api/v1/me`)
+响应中新增 `status` 对象，包含以下字段：
+- `is_newbie` (boolean): 是否是"新用户"（注册7天内）
+- `kyc_verified` (boolean): 身份是否已验证（KYC状态为approved）
+- `has_withdraw_password` (boolean): 是否已设置提现密码
+- `has_withdraw_address` (boolean): 是否已设置提现地址
+
+#### 提现申请 (`POST /api/v1/withdrawals/apply`)
+- 新增必填参数：`withdraw_password` - 提现密码（用于安全验证）
+- 系统会验证用户是否已设置提现密码
+- 系统会验证提供的提现密码是否正确
+
+#### 新增提现设置接口
+- **设置提现密码** (`POST /api/v1/withdraw/password`)
+  - 首次设置：只需提供 `password`（6-20个字符）
+  - 修改密码：需要提供 `old_password` 和 `password`
+  
+- **验证提现密码** (`POST /api/v1/withdraw/password/verify`)
+  - 用于在敏感操作前验证密码
+  - 返回 `verified` (boolean) 和 `message`
+  
+- **设置提现地址** (`POST /api/v1/withdraw/address`)
+  - 提供 `address` 参数即可设置或更新提现地址
+  - 地址最大长度为255个字符
+
 ### 认证模块
 - `POST /api/v1/auth/register` - 用户注册
 - `POST /api/v1/auth/login` - 用户登录
 - `POST /api/v1/auth/refresh` - 刷新令牌
-- `GET /api/v1/me` - 获取当前用户信息
+- `POST /api/v1/auth/password/request-reset` - 请求密码重置（发送重置邮件）
+- `POST /api/v1/auth/password/reset` - 通过邮件token重置密码（忘记密码时使用）
+- `POST /api/v1/auth/password/change` - 修改登录密码（需要提供旧密码验证）
+- `GET /api/v1/me` - 获取当前用户信息（包含用户状态：新用户、KYC验证状态、提现密码/地址设置状态）
 
 ### KYC 模块
 - `GET /api/v1/kyc/status` - 获取 KYC 状态
@@ -84,7 +114,17 @@ Scramble 会自动从以下内容生成文档：
 ### 提现模块
 - `GET /api/v1/withdrawals` - 获取提现历史
 - `GET /api/v1/withdrawals/calc-withdrawable` - 计算可提现金额
-- `POST /api/v1/withdrawals/apply` - 申请提现
+- `POST /api/v1/withdrawals/apply` - 申请提现（需要提供提现密码进行验证）
+
+### 提现设置模块
+- `POST /api/v1/withdraw/password` - 设置/修改提现密码
+  - 首次设置：只需提供 `password`（6-20个字符）
+  - 修改密码：需要提供 `old_password` 和 `password`
+- `POST /api/v1/withdraw/password/verify` - 验证提现密码
+  - 用于在敏感操作前验证密码
+  - 返回验证结果和消息
+- `POST /api/v1/withdraw/address` - 设置/修改提现地址
+  - 提供 `address` 参数（最大255个字符）
 
 ### 划转模块
 - `POST /api/v1/transfer` - 账户间划转
@@ -201,6 +241,205 @@ class RegisterRequest extends FormRequest
     }
 }
 ```
+
+## 📝 新增接口详细说明
+
+### 修改登录密码
+
+**接口**: `POST /api/v1/auth/password/change`
+
+**说明**: 允许已登录用户修改自己的登录密码，需要提供旧密码进行验证。
+
+**请求**:
+```json
+{
+  "old_password": "oldpassword123",
+  "password": "newpassword123"
+}
+```
+
+**响应**:
+```json
+{
+  "message": "Password has been changed successfully."
+}
+```
+
+**验证规则**:
+- `old_password`: 必填，字符串，当前密码
+- `password`: 必填，字符串，新密码（至少8个字符）
+
+**错误响应**:
+- 旧密码错误: 422 状态码，返回验证错误信息
+- 新密码不符合要求: 422 状态码，返回验证错误信息
+
+### 提现设置接口
+
+#### 1. 设置/修改提现密码
+
+**接口**: `POST /api/v1/withdraw/password`
+
+**首次设置**（用户未设置过提现密码）:
+```json
+{
+  "password": "123456"
+}
+```
+
+**修改密码**（用户已设置过提现密码）:
+```json
+{
+  "old_password": "123456",
+  "password": "654321"
+}
+```
+
+**响应**:
+```json
+{
+  "message": "提现密码已设置" // 或 "提现密码已更新"
+}
+```
+
+**验证规则**:
+- `password`: 必填，字符串，6-20个字符
+- `old_password`: 如果已设置过密码则必填
+
+#### 2. 验证提现密码
+
+**接口**: `POST /api/v1/withdraw/password/verify`
+
+**请求**:
+```json
+{
+  "password": "123456"
+}
+```
+
+**响应（成功）**:
+```json
+{
+  "verified": true,
+  "message": "密码验证成功"
+}
+```
+
+**响应（失败）**:
+```json
+{
+  "verified": false,
+  "message": "密码错误"
+}
+```
+
+**响应（未设置）**:
+```json
+{
+  "verified": false,
+  "error": "提现密码未设置"
+}
+```
+
+#### 3. 设置/修改提现地址
+
+**接口**: `POST /api/v1/withdraw/address`
+
+**请求**:
+```json
+{
+  "address": "Txxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+}
+```
+
+**响应**:
+```json
+{
+  "message": "提现地址已设置"
+}
+```
+
+**验证规则**:
+- `address`: 必填，字符串，最大255个字符
+
+### 用户状态查询
+
+#### GET /api/v1/me 响应示例
+
+```json
+{
+  "user": {
+    "id": 1,
+    "email": "user@example.com",
+    "invite_code": "ABC123",
+    "role": "user",
+    "status": "active",
+    "first_joined_at": "2025-11-20T00:00:00Z"
+  },
+  "profile": {
+    "name": "张三",
+    "city": "北京"
+  },
+  "kyc": {
+    "level": "advanced",
+    "status": "approved"
+  },
+  "role": "user",
+  "assets": {
+    "total_balance": "1000.000000",
+    "principal_balance": "800.000000",
+    "profit_balance": "150.000000",
+    "bonus_balance": "50.000000",
+    "accounts": {
+      "USDT": {
+        "spot": {
+          "available": "500.000000",
+          "frozen": "100.000000"
+        },
+        "contract": {
+          "available": "400.000000",
+          "frozen": "0.000000"
+        }
+      }
+    }
+  },
+  "status": {
+    "is_newbie": false,
+    "kyc_verified": true,
+    "has_withdraw_password": true,
+    "has_withdraw_address": true
+  }
+}
+```
+
+**status 字段说明**:
+- `is_newbie`: 布尔值，表示用户是否是"新用户"（注册7天内）
+- `kyc_verified`: 布尔值，表示用户身份是否已验证（KYC状态为approved）
+- `has_withdraw_password`: 布尔值，表示是否已设置提现密码
+- `has_withdraw_address`: 布尔值，表示是否已设置提现地址
+
+### 提现申请更新
+
+#### POST /api/v1/withdrawals/apply
+
+**请求示例**（新增 `withdraw_password` 字段）:
+```json
+{
+  "amount": "1000.00",
+  "to_address": "Txxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "currency": "USDT",
+  "chain": "TRC20",
+  "withdraw_password": "123456"
+}
+```
+
+**验证规则**:
+- `withdraw_password`: 必填，字符串，用于安全验证
+- 系统会检查用户是否已设置提现密码
+- 系统会验证提供的提现密码是否正确
+
+**错误响应**:
+- 如果未设置提现密码: `"Withdrawal password not set"`
+- 如果密码错误: `"Invalid withdrawal password"`
 
 ## 🔗 相关链接
 
