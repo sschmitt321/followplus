@@ -11,7 +11,7 @@ class MeController extends Controller
      * Get current user information.
      * 
      * Returns comprehensive information about the authenticated user, including:
-     * - Basic user details (id, email, invite_code, role, status)
+     * - Basic user details (id, email, phone, invite_code, role, status)
      * - User profile information (name, city)
      * - KYC status (level and verification status)
      * - Assets summary (total balance, principal, profit, bonus)
@@ -20,7 +20,7 @@ class MeController extends Controller
      * This endpoint is used to fetch the current user's profile and account overview.
      * 
      * @return JsonResponse Returns user information including:
-     * - user: Basic user information (id, email, invite_code, role, status, first_joined_at)
+     * - user: Basic user information (id, email, phone, invite_code, role, status, first_joined_at)
      * - profile: User profile information (name, city, withdraw_address) or null if not set
      * - kyc: KYC status (level, status) or null if not submitted
      * - role: User role (redundant with user.role)
@@ -74,6 +74,7 @@ class MeController extends Controller
             'user' => [
                 'id' => $user->id,
                 'email' => $user->email,
+                'phone' => $user->phone,
                 'invite_code' => $user->invite_code,
                 'role' => $user->role,
                 'status' => $user->status,

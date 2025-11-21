@@ -40,7 +40,7 @@ class AdminKycController extends Controller
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
-        $query = UserKyc::with('user:id,email,created_at');
+        $query = UserKyc::with('user:id,email,phone,created_at');
 
         if (isset($validated['status'])) {
             $query->where('status', $validated['status']);
@@ -59,6 +59,7 @@ class AdminKycController extends Controller
                     'id' => $kyc->id,
                     'user_id' => $kyc->user_id,
                     'user_email' => $kyc->user->email,
+                    'user_phone' => $kyc->user->phone,
                     'level' => $kyc->level,
                     'status' => $kyc->status,
                     'front_image_url' => $kyc->front_image_url,
@@ -97,6 +98,7 @@ class AdminKycController extends Controller
                 'user' => [
                     'id' => $kyc->user->id,
                     'email' => $kyc->user->email,
+                    'phone' => $kyc->user->phone,
                     'name' => $kyc->user->profile?->name,
                     'created_at' => $kyc->user->created_at->toIso8601String(),
                 ],

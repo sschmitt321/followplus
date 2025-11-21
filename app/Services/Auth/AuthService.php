@@ -20,9 +20,16 @@ class AuthService
     }
     /**
      * Register a new user.
+     * 
+     * Supports registration with email or phone number (at least one is required).
      */
-    public function register(string $email, string $password, ?string $inviteCode = null): array
+    public function register(?string $email, ?string $phone, string $password, ?string $inviteCode = null): array
     {
+        // Validate that at least one identifier is provided
+        if (empty($email) && empty($phone)) {
+            throw new \Exception('Either email or phone number is required');
+        }
+
         // Generate unique invite code
         $userInviteCode = $this->generateInviteCode();
 
@@ -42,6 +49,7 @@ class AuthService
         // Create user with Argon2id password hash
         $user = User::create([
             'email' => $email,
+            'phone' => $phone,
             'password_hash' => Hash::make($password, ['memory' => 65536, 'time' => 4, 'threads' => 3]),
             'invite_code' => $userInviteCode,
             'invited_by_user_id' => $inviter?->id,
@@ -88,10 +96,21 @@ class AuthService
 
     /**
      * Login user.
+     * 
+     * Supports login with email or phone number.
+     * Automatically detects if the input is an email or phone number.
      */
-    public function login(string $email, string $password): array
+    public function login(string $emailOrPhone, string $password): array
     {
-        $user = User::where('email', $email)->first();
+        // Determine if input is email or phone number
+        $isEmail = filter_var($emailOrPhone, FILTER_VALIDATE_EMAIL) !== false;
+        
+        // Find user by email or phone
+        if ($isEmail) {
+            $user = User::where('email', $emailOrPhone)->first();
+        } else {
+            $user = User::where('phone', $emailOrPhone)->first();
+        }
 
         if (!$user || !Hash::check($password, $user->password_hash)) {
             throw new \Exception('Invalid credentials');

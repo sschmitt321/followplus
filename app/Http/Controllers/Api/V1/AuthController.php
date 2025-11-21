@@ -22,16 +22,29 @@ class AuthController extends Controller
      * the user will receive JWT access and refresh tokens.
      * 
      * @param Request $request
-     * @param string $request->email Required. User email address. Must be valid email format and unique in the system.
+     * @param string|null $request->email Optional. User email address. Must be valid email format and unique in the system (required if phone not provided).
+     * @param string|null $request->phone Optional. User phone number. Must be unique in the system (required if email not provided).
      * @param string $request->password Required. User password. Must be at least 8 characters long.
      * @param string|null $request->invite_code Optional. Invite code from an existing user. If provided, establishes referral relationship.
      * 
      * @return JsonResponse Returns access and refresh tokens on success.
      * 
-     * @example {
+     * @example Register with email {
      *   "email": "user@example.com",
      *   "password": "password123",
      *   "invite_code": "ABC12345"
+     * }
+     * 
+     * @example Register with phone {
+     *   "phone": "13800138000",
+     *   "password": "password123",
+     *   "invite_code": "ABC12345"
+     * }
+     * 
+     * @example Register with both {
+     *   "email": "user@example.com",
+     *   "phone": "13800138000",
+     *   "password": "password123"
      * }
      */
     public function register(Request $request): JsonResponse
@@ -42,11 +55,62 @@ class AuthController extends Controller
         }
 
         try {
-            $validated = $request->validate([
-                'email' => 'required|email|unique:users,email', // User email address (must be unique)
-                'password' => 'required|string|min:8', // Password (minimum 8 characters)
-                'invite_code' => 'nullable|string|exists:users,invite_code', // Optional invite code from existing user
+            // Support both email and phone registration
+            // The 'email' field can accept either email or phone number
+            $input = $request->all();
+            $emailOrPhone = $input['email'] ?? null;
+            
+            // Determine if input is email or phone
+            $isEmail = $emailOrPhone && filter_var($emailOrPhone, FILTER_VALIDATE_EMAIL) !== false;
+            
+            // Prepare validation rules based on input type
+            $rules = [
+                'password' => 'required|string|min:8',
+                'invite_code' => 'nullable|string|exists:users,invite_code',
+            ];
+            
+            // Normalize the input: if email field contains phone number, move it to phone field
+            $normalizedEmail = null;
+            $normalizedPhone = null;
+            
+            if ($isEmail) {
+                // It's an email
+                $normalizedEmail = $emailOrPhone;
+                $normalizedPhone = $input['phone'] ?? null;
+                $rules['email'] = 'required|email|unique:users,email';
+                $rules['phone'] = 'nullable|string|unique:users,phone';
+            } else if ($emailOrPhone) {
+                // It's a phone number in email field
+                $normalizedPhone = $emailOrPhone;
+                $normalizedEmail = null;
+                $rules['email'] = 'nullable';
+                $rules['phone'] = 'required|string|unique:users,phone';
+            } else {
+                // Check if phone field is provided separately
+                $normalizedPhone = $input['phone'] ?? null;
+                $rules['email'] = 'nullable';
+                $rules['phone'] = 'nullable|string|unique:users,phone';
+            }
+            
+            // Update request with normalized values for validation
+            $request->merge([
+                'email' => $normalizedEmail,
+                'phone' => $normalizedPhone,
             ]);
+            
+            $validated = $request->validate($rules);
+            
+            // Ensure validated data has correct values
+            $validated['email'] = $normalizedEmail;
+            $validated['phone'] = $normalizedPhone;
+
+            // Ensure at least one of email or phone is provided
+            if (empty($validated['email']) && empty($validated['phone'])) {
+                return response()->json([
+                    'error' => 'Validation failed',
+                    'errors' => ['email' => ['Either email or phone is required']],
+                ], 422);
+            }
         } catch (ValidationException $e) {
             return response()->json([
                 'error' => 'Validation failed',
@@ -56,7 +120,8 @@ class AuthController extends Controller
 
         try {
             $tokens = $this->authService->register(
-                $validated['email'],
+                $validated['email'] ?? null,
+                $validated['phone'] ?? null,
                 $validated['password'],
                 $validated['invite_code'] ?? null
             );
@@ -72,10 +137,11 @@ class AuthController extends Controller
     /**
      * Login user.
      * 
-     * Authenticates a user with email and password, returns JWT tokens for API access.
+     * Authenticates a user with email or phone number and password, returns JWT tokens for API access.
+     * Supports both email and phone number login.
      * 
      * @param Request $request
-     * @param string $request->email Required. User registered email address.
+     * @param string $request->email Required. User registered email address or phone number.
      * @param string $request->password Required. User password.
      * 
      * @return JsonResponse Returns access and refresh tokens on successful authentication.
@@ -84,11 +150,16 @@ class AuthController extends Controller
      *   "email": "user@example.com",
      *   "password": "password123"
      * }
+     * 
+     * @example {
+     *   "email": "13800138000",
+     *   "password": "password123"
+     * }
      */
     public function login(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'email' => 'required|email', // User email address
+            'email' => 'required|string', // User email address or phone number
             'password' => 'required|string', // User password
         ]);
 

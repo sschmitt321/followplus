@@ -53,6 +53,7 @@ class AdminDepositController extends Controller
                     'id' => $deposit->id,
                     'user_id' => $deposit->user_id,
                     'user_email' => $deposit->user->email ?? null,
+                    'user_phone' => $deposit->user->phone ?? null,
                     'currency' => $deposit->currency,
                     'amount' => $deposit->amount->toFixed(6),
                     'status' => $deposit->status,

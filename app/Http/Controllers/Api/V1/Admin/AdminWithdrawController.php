@@ -56,6 +56,7 @@ class AdminWithdrawController extends Controller
                     'id' => $withdrawal->id,
                     'user_id' => $withdrawal->user_id,
                     'user_email' => $withdrawal->user->email ?? null,
+                    'user_phone' => $withdrawal->user->phone ?? null,
                     'currency' => $withdrawal->currency,
                     'amount_request' => $withdrawal->amount_request->toFixed(6),
                     'fee' => $withdrawal->fee->toFixed(6),
