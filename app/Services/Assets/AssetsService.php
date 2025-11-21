@@ -35,36 +35,36 @@ class AssetsService
 
         while ($retryCount < $maxRetries) {
             try {
-                return DB::transaction(function () use ($userId) {
+        return DB::transaction(function () use ($userId) {
                     // Calculate balances first (outside of lock)
-                    $accounts = Account::where('user_id', $userId)->get();
-                    
-                    $totalBalance = Decimal::zero();
-                    $principalBalance = Decimal::zero();
-                    $profitBalance = Decimal::zero();
-                    $bonusBalance = Decimal::zero();
+            $accounts = Account::where('user_id', $userId)->get();
+            
+            $totalBalance = Decimal::zero();
+            $principalBalance = Decimal::zero();
+            $profitBalance = Decimal::zero();
+            $bonusBalance = Decimal::zero();
 
-                    foreach ($accounts as $account) {
-                        $balance = $account->available->add($account->frozen);
-                        $totalBalance = $totalBalance->add($balance);
-                        
-                        // TODO: 根据业务类型区分本金、利润、奖励
-                        // 这里先全部算作本金
-                        $principalBalance = $principalBalance->add($balance);
-                    }
+            foreach ($accounts as $account) {
+                $balance = $account->available->add($account->frozen);
+                $totalBalance = $totalBalance->add($balance);
+                
+                // TODO: 根据业务类型区分本金、利润、奖励
+                // 这里先全部算作本金
+                $principalBalance = $principalBalance->add($balance);
+            }
 
                     // Use updateOrCreate which handles concurrency better
                     // It will try to update first, and only create if record doesn't exist
-                    return UserAssetsSummary::updateOrCreate(
-                        ['user_id' => $userId],
-                        [
-                            'total_balance' => $totalBalance->toFixed(6),
-                            'principal_balance' => $principalBalance->toFixed(6),
-                            'profit_balance' => $profitBalance->toFixed(6),
-                            'bonus_balance' => $bonusBalance->toFixed(6),
-                        ]
-                    );
-                });
+            return UserAssetsSummary::updateOrCreate(
+                ['user_id' => $userId],
+                [
+                    'total_balance' => $totalBalance->toFixed(6),
+                    'principal_balance' => $principalBalance->toFixed(6),
+                    'profit_balance' => $profitBalance->toFixed(6),
+                    'bonus_balance' => $bonusBalance->toFixed(6),
+                ]
+            );
+        });
             } catch (\Illuminate\Database\QueryException $e) {
                 // Handle deadlock (1213) or duplicate key (1062)
                 $isDeadlock = $e->getCode() === '40001' && str_contains($e->getMessage(), '1213');

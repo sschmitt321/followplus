@@ -75,7 +75,6 @@ Route::prefix('v1')->middleware(['rate.limit'])->group(function () {
 
         // Withdrawal routes
         Route::get('/withdrawals', [WithdrawController::class, 'index']);
-        Route::get('/withdrawals/calc-withdrawable', [WithdrawController::class, 'calcWithdrawable']);
         Route::post('/withdrawals/apply', [WithdrawController::class, 'apply'])->middleware('idempotency');
 
         // Withdrawal settings routes

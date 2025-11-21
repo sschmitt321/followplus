@@ -20,32 +20,66 @@ class TronHelper
      */
     public static function addressToHex(string $address): string
     {
-        // Remove 'T' prefix if present
-        $address = ltrim($address, 'T');
-        
-        // For now, return as-is if it's already hex
+        // If already hex format, return as-is
         if (strlen($address) === 42 && str_starts_with($address, '41')) {
             return $address;
         }
         
-        // TODO: Implement actual base58 to hex conversion
-        // This requires base58 decoding library
-        // For now, we'll use TronGrid API to convert
-        
+        // Use takpesar/tron library for base58 decoding
         try {
-            $response = \Illuminate\Support\Facades\Http::get('https://api.trongrid.io/v1/accounts/' . $address);
-            if ($response->successful()) {
-                $data = $response->json();
-                return $data['address'] ?? $address;
+            // Decode base58 address to hex
+            $hexAddress = \Tak\Tron\Crypto\Base58::decodeAddress($address);
+            
+            // Ensure it starts with 41
+            if (!str_starts_with($hexAddress, '41')) {
+                $hexAddress = '41' . ltrim($hexAddress, '41');
             }
+            
+            // Ensure length is 42 (41 + 20 bytes = 40 hex chars)
+            if (strlen($hexAddress) !== 42) {
+                // Pad or truncate to 42 chars
+                if (strlen($hexAddress) < 42) {
+                    $hexAddress = str_pad($hexAddress, 42, '0', STR_PAD_RIGHT);
+                } else {
+                    $hexAddress = substr($hexAddress, 0, 42);
+                }
+            }
+            
+            return $hexAddress;
         } catch (\Exception $e) {
-            Log::warning('TronHelper: Failed to convert address via API', [
+            Log::warning('TronHelper: Failed to convert address to hex', [
                 'address' => $address,
                 'error' => $e->getMessage(),
             ]);
+            
+            // Fallback: try API conversion
+            try {
+                $baseUrl = config('services.tron.node_url', 'https://api.trongrid.io');
+                $apiKey = config('services.tron.api_key', '');
+                $headers = [];
+                if ($apiKey) {
+                    $headers['TRON-PRO-API-KEY'] = $apiKey;
+                }
+                
+                $response = \Illuminate\Support\Facades\Http::withHeaders($headers)
+                    ->get("{$baseUrl}/v1/accounts/{$address}");
+                
+                if ($response->successful()) {
+                    $data = $response->json();
+                    // API returns hex address in 'address' field
+                    if (isset($data['address']) && str_starts_with($data['address'], '41')) {
+                        return $data['address'];
+                    }
+                }
+            } catch (\Exception $apiException) {
+                Log::warning('TronHelper: API fallback also failed', [
+                    'error' => $apiException->getMessage(),
+                ]);
+            }
+            
+            // Last resort: return as-is (will likely cause errors)
+            return $address;
         }
-        
-        return $address;
     }
 
     /**
@@ -61,27 +95,68 @@ class TronHelper
             return $hexAddress;
         }
         
-        // Remove 41 prefix if present
-        $hexAddress = ltrim($hexAddress, '41');
+        // Remove 0x prefix if present
+        if (str_starts_with($hexAddress, '0x') || str_starts_with($hexAddress, '0X')) {
+            $hexAddress = substr($hexAddress, 2);
+        }
         
-        // TODO: Implement actual hex to base58 conversion
-        // For now, try to get from TronGrid API
-        
-        try {
-            $response = \Illuminate\Support\Facades\Http::get('https://api.trongrid.io/v1/accounts/' . $hexAddress);
-            if ($response->successful()) {
-                $data = $response->json();
-                return $data['address'] ?? 'T' . $hexAddress;
+        // If it already starts with 41, use as-is
+        // Otherwise, add 41 prefix (Tron addresses start with 41 in hex)
+        if (!str_starts_with($hexAddress, '41')) {
+            // If it's a 40-char hex (20 bytes), add 41 prefix
+            if (strlen($hexAddress) === 40 && ctype_xdigit($hexAddress)) {
+                $hexAddress = '41' . $hexAddress;
+            } else {
+                // Otherwise, try to prepend 41
+                $hexAddress = '41' . ltrim($hexAddress, '41');
             }
+        }
+        
+        // Ensure length is 42 (41 + 20 bytes = 40 hex chars)
+        if (strlen($hexAddress) !== 42) {
+            if (strlen($hexAddress) < 42) {
+                $hexAddress = str_pad($hexAddress, 42, '0', STR_PAD_RIGHT);
+            } else {
+                $hexAddress = substr($hexAddress, 0, 42);
+            }
+        }
+        
+        // Use takpesar/tron library for base58 encoding
+        try {
+            return \Tak\Tron\Crypto\Base58::encodeAddress($hexAddress);
         } catch (\Exception $e) {
-            Log::warning('TronHelper: Failed to convert hex address via API', [
+            Log::warning('TronHelper: Failed to convert hex to address', [
                 'hex' => $hexAddress,
                 'error' => $e->getMessage(),
             ]);
+            
+            // Fallback: try API conversion
+            try {
+                $baseUrl = config('services.tron.node_url', 'https://api.trongrid.io');
+                $apiKey = config('services.tron.api_key', '');
+                $headers = [];
+                if ($apiKey) {
+                    $headers['TRON-PRO-API-KEY'] = $apiKey;
+                }
+                
+                $response = \Illuminate\Support\Facades\Http::withHeaders($headers)
+                    ->get("{$baseUrl}/v1/accounts/{$hexAddress}");
+                
+                if ($response->successful()) {
+                    $data = $response->json();
+                    if (isset($data['address']) && str_starts_with($data['address'], 'T')) {
+                        return $data['address'];
+                    }
+                }
+            } catch (\Exception $apiException) {
+                Log::warning('TronHelper: API fallback also failed', [
+                    'error' => $apiException->getMessage(),
+                ]);
+            }
+            
+            // Last resort: return with T prefix (will likely be invalid)
+            return 'T' . substr($hexAddress, 2);
         }
-        
-        // Fallback: return with T prefix
-        return 'T' . $hexAddress;
     }
 
     /**

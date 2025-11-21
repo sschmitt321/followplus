@@ -28,7 +28,10 @@ class AdminWithdrawController extends Controller
      * @param int|null $request->user_id Optional. Filter by user ID.
      * @param int|null $request->page Optional. Page number for pagination (default: 1)
      * 
-     * @return JsonResponse Returns paginated withdrawal list with user information
+     * @return JsonResponse Returns paginated withdrawal list with user information, including:
+     * - review_note: Admin review note/comment (null if not reviewed)
+     * - reviewed_at: Review timestamp (null if not reviewed)
+     * - reviewed_by: Admin user ID who reviewed (null if not reviewed)
      * 
      * Query example: ?status=pending&user_id=1&page=1
      */
@@ -60,6 +63,13 @@ class AdminWithdrawController extends Controller
                     'status' => $withdrawal->status,
                     'to_address' => $withdrawal->to_address,
                     'txid' => $withdrawal->txid,
+                    'review_note' => $withdrawal->review_note,
+                    'reviewed_at' => $withdrawal->reviewed_at ? (
+                        $withdrawal->reviewed_at instanceof \Carbon\Carbon 
+                            ? $withdrawal->reviewed_at->toIso8601String() 
+                            : $withdrawal->reviewed_at
+                    ) : null,
+                    'reviewed_by' => $withdrawal->reviewed_by,
                     'created_at' => $withdrawal->created_at->toIso8601String(),
                 ];
             }),

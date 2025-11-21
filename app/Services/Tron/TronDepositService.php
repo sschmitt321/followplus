@@ -31,50 +31,121 @@ class TronDepositService
         $addresses = $wallets->pluck('tron_address')->toArray();
 
         if (empty($addresses)) {
+            Log::channel('tron-deposits')->info('TronDepositService: No user wallets found');
             return 0;
         }
 
-        // Get recent transfer events (last 1 hour)
-        $minTimestamp = (time() - 3600) * 1000; // milliseconds
-        $events = $this->nodeClient->getUsdtTransferEvents($minTimestamp);
+        Log::channel('tron-deposits')->info('TronDepositService: Starting deposit scan', [
+            'address_count' => count($addresses),
+            'addresses' => array_slice($addresses, 0, 5), // Log first 5 addresses
+        ]);
 
-        foreach ($events as $event) {
-            $to = $event['to'];
-            $from = $event['from'];
-            $amount = $event['amount'];
-            $txid = $event['txid'];
+        // Use account transactions API for each address to avoid missing transactions
+        // due to event API limit (200 events)
+        $processedCount = 0;
+        $skippedAlreadyExists = 0;
+        $scanHours = (int) config('services.tron.scan_hours', env('TRON_SCAN_HOURS', 24));
+        $minTimestamp = (time() - ($scanHours * 3600)) * 1000; // milliseconds
+        
+        Log::channel('tron-deposits')->info('TronDepositService: Scanning deposits for each address', [
+            'scan_hours' => $scanHours,
+            'min_timestamp' => date('Y-m-d H:i:s', $minTimestamp / 1000),
+        ]);
 
-            // Check if this is one of our deposit addresses
-            $wallet = UserTronWallet::where('tron_address', $to)->first();
-            
-            if (!$wallet) {
+        foreach ($addresses as $address) {
+            try {
+                $startTime = microtime(true);
+                $transactions = $this->nodeClient->getAccountTrc20Transactions($address, $minTimestamp);
+                $fetchDuration = round((microtime(true) - $startTime) * 1000, 2);
+                
+                Log::channel('tron-deposits')->info('TronDepositService: Fetched transactions for address', [
+                    'address' => $address,
+                    'transaction_count' => count($transactions),
+                    'fetch_duration_ms' => $fetchDuration,
+                ]);
+
+                foreach ($transactions as $tx) {
+                    $txid = $tx['txid'];
+                    $from = $tx['from'];
+                    $amount = $tx['amount'];
+                    $tokenSymbol = $tx['token_symbol'] ?? 'USDT';
+
+                    // Only process USDT deposits
+                    if ($tokenSymbol !== 'USDT') {
+                        continue;
+                    }
+
+                    // Check if deposit already exists
+                    $exists = TronDeposit::where('txid', $txid)
+                        ->where('tron_address', $address)
+                        ->exists();
+
+                    if ($exists) {
+                        $skippedAlreadyExists++;
+                        Log::channel('tron-deposits')->debug('TronDepositService: Skipping transaction - deposit already exists', [
+                            'txid' => $txid,
+                            'address' => $address,
+                        ]);
+                        continue;
+                    }
+
+                    // Get wallet for this address
+                    $wallet = UserTronWallet::where('tron_address', $address)->first();
+                    if (!$wallet) {
+                        Log::channel('tron-deposits')->warning('TronDepositService: Wallet not found for address', [
+                            'address' => $address,
+                        ]);
+                        continue;
+                    }
+
+                    // Create new deposit record
+                    try {
+                        TronDeposit::create([
+                            'user_id' => $wallet->user_id,
+                            'tron_address' => $address,
+                            'txid' => $txid,
+                            'from_address' => $from,
+                            'amount' => $amount,
+                            'token_symbol' => $tokenSymbol,
+                            'confirmations' => 0,
+                            'required_confirmations' => $this->requiredConfirmations,
+                            'status' => 'pending',
+                        ]);
+
+                        $count++;
+                        $processedCount++;
+                        
+                        Log::channel('tron-deposits')->info('TronDepositService: Created new deposit', [
+                            'user_id' => $wallet->user_id,
+                            'txid' => $txid,
+                            'amount' => $amount,
+                            'to' => $address,
+                            'from' => $from,
+                            'token_symbol' => $tokenSymbol,
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::channel('tron-deposits')->error('TronDepositService: Failed to create deposit', [
+                            'txid' => $txid,
+                            'address' => $address,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::channel('tron-deposits')->error('TronDepositService: Failed to get transactions for address', [
+                    'address' => $address,
+                    'error' => $e->getMessage(),
+                ]);
+                // Continue with next address
                 continue;
             }
-
-            // Check if deposit already exists
-            $exists = TronDeposit::where('txid', $txid)
-                ->where('tron_address', $to)
-                ->exists();
-
-            if ($exists) {
-                continue;
-            }
-
-            // Create new deposit record
-            TronDeposit::create([
-                'user_id' => $wallet->user_id,
-                'tron_address' => $to,
-                'txid' => $txid,
-                'from_address' => $from,
-                'amount' => $amount,
-                'token_symbol' => 'USDT',
-                'confirmations' => 0,
-                'required_confirmations' => $this->requiredConfirmations,
-                'status' => 'pending',
-            ]);
-
-            $count++;
         }
+
+        Log::channel('tron-deposits')->info('TronDepositService: Scan completed', [
+            'new_deposits' => $count,
+            'processed' => $processedCount,
+            'skipped_already_exists' => $skippedAlreadyExists,
+        ]);
 
         return $count;
     }
@@ -107,10 +178,20 @@ class TronDepositService
 
                     // Mark as credited
                     $deposit->update(['status' => 'credited']);
+                    
+                    // Log credited deposit
+                    Log::channel('tron-deposits')->info('TronDepositService: Deposit credited', [
+                        'user_id' => $deposit->user_id,
+                        'txid' => $deposit->txid,
+                        'amount' => $deposit->amount,
+                        'tron_address' => $deposit->tron_address,
+                        'confirmations' => $confirmations,
+                    ]);
+                    
                     $credited++;
                 }
             } catch (\Exception $e) {
-                Log::error('TronDepositService: Error updating deposit', [
+                Log::channel('tron-deposits')->error('TronDepositService: Error updating deposit', [
                     'deposit_id' => $deposit->id,
                     'error' => $e->getMessage(),
                 ]);

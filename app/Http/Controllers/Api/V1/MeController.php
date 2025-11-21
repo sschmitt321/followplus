@@ -21,7 +21,7 @@ class MeController extends Controller
      * 
      * @return JsonResponse Returns user information including:
      * - user: Basic user information (id, email, invite_code, role, status, first_joined_at)
-     * - profile: User profile information (name, city) or null if not set
+     * - profile: User profile information (name, city, withdraw_address) or null if not set
      * - kyc: KYC status (level, status) or null if not submitted
      * - role: User role (redundant with user.role)
      * - assets: Assets summary with total_balance, principal_balance, profit_balance, bonus_balance, and accounts (grouped by currency and account type)
@@ -82,6 +82,7 @@ class MeController extends Controller
             'profile' => $user->profile ? [
                 'name' => $user->profile->name,
                 'city' => $user->profile->city,
+                'withdraw_address' => $user->profile->withdraw_address,
             ] : null,
             'kyc' => $user->kyc ? [
                 'level' => $user->kyc->level,

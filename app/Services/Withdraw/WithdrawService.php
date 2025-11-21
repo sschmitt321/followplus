@@ -85,9 +85,8 @@ class WithdrawService
                 throw new \Exception('Invalid withdrawal password');
             }
             
-            // Calculate fee
-            $calc = $this->calcWithdrawable($userId);
-            $totalBalance = Decimal::of($calc['total_balance']);
+            // Check balance
+            $totalBalance = $this->assetsService->getTotalBalance($userId);
             
             if ($amount->greaterThan($totalBalance)) {
                 throw new \Exception('Insufficient balance');

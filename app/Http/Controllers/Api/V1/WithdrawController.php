@@ -24,7 +24,9 @@ class WithdrawController extends Controller
      * @param Request $request Query parameters
      * @param int|null $request->page Optional. Page number for pagination (default: 1)
      * 
-     * @return JsonResponse Returns paginated withdrawal list with metadata
+     * @return JsonResponse Returns paginated withdrawal list with metadata, including:
+     * - review_note: Admin review note/comment (null if not reviewed)
+     * - reviewed_at: Review timestamp (null if not reviewed)
      */
     public function index(Request $request): JsonResponse
     {
@@ -44,6 +46,12 @@ class WithdrawController extends Controller
                     'status' => $withdrawal->status,
                     'to_address' => $withdrawal->to_address,
                     'txid' => $withdrawal->txid,
+                    'review_note' => $withdrawal->review_note,
+                    'reviewed_at' => $withdrawal->reviewed_at ? (
+                        $withdrawal->reviewed_at instanceof \Carbon\Carbon 
+                            ? $withdrawal->reviewed_at->toIso8601String() 
+                            : $withdrawal->reviewed_at
+                    ) : null,
                     'created_at' => $withdrawal->created_at->toIso8601String(),
                 ];
             }),
@@ -56,31 +64,15 @@ class WithdrawController extends Controller
     }
 
     /**
-     * Calculate withdrawable amount.
-     * 
-     * Calculates the maximum amount user can withdraw based on their account type:
-     * - Newbie (joined within 7 days): 90% of total balance (10% fee deducted)
-     * - Old user: Total balance minus configured fee rate
-     * 
-     * @return JsonResponse Returns withdrawable amount, fee, policy type, and total balance
-     */
-    public function calcWithdrawable(): JsonResponse
-    {
-        try {
-            $calc = $this->withdrawService->calcWithdrawable(auth()->id());
-            return response()->json($calc);
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => $e->getMessage(),
-            ], 400);
-        }
-    }
-
-    /**
      * Apply withdrawal.
      * 
      * Creates a withdrawal request. The amount will be frozen until the withdrawal is processed.
      * Fee is calculated based on user type (newbie vs old user).
+     * 
+     * Prerequisites (all must be met, otherwise returns 400 error):
+     * - User must have completed KYC verification (status = 'approved')
+     * - User must have set a withdrawal address (profile.withdraw_address)
+     * - User must have set a withdrawal password (withdraw_password_hash)
      * 
      * @param Request $request
      * @param string $request->amount Required. Withdrawal amount as string (e.g., "100.50"). Must be >= 0 and <= withdrawable amount.
@@ -89,7 +81,12 @@ class WithdrawController extends Controller
      * @param string|null $request->chain Optional. Blockchain network (max 20 characters, e.g., "TRC20", "ERC20").
      * @param string $request->withdraw_password Required. User's withdrawal password for security verification.
      * 
-     * @return JsonResponse Returns withdrawal record with calculated fee and actual amount
+     * @return JsonResponse Returns withdrawal record with calculated fee and actual amount, or error message if prerequisites not met
+     * 
+     * Error responses:
+     * - 400: "身份认证未完成" - KYC verification not completed
+     * - 400: "提现地址未绑定" - Withdrawal address not set
+     * - 400: "提现密码未设置" - Withdrawal password not set
      * 
      * Request example:
      * {
@@ -110,9 +107,33 @@ class WithdrawController extends Controller
             'withdraw_password' => 'required|string', // Withdrawal password for security verification
         ]);
 
+        $user = auth()->user();
+        $user->load(['kyc', 'profile']);
+
+        // Verify KYC status
+        if (!$user->kyc || $user->kyc->status !== 'approved') {
+            return response()->json([
+                'error' => '身份认证未完成',
+            ], 400);
+        }
+
+        // Verify withdraw address is set
+        if (empty($user->profile?->withdraw_address)) {
+            return response()->json([
+                'error' => '提现地址未绑定',
+            ], 400);
+        }
+
+        // Verify withdraw password is set
+        if (empty($user->withdraw_password_hash)) {
+            return response()->json([
+                'error' => '提现密码未设置',
+            ], 400);
+        }
+
         try {
             $withdrawal = $this->withdrawService->apply(
-                auth()->id(),
+                $user->id,
                 $validated['amount'],
                 $validated['to_address'],
                 $validated['currency'] ?? 'USDT',

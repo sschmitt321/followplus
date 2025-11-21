@@ -76,6 +76,34 @@ Scramble 会自动从以下内容生成文档：
 - 新增必填参数：`withdraw_password` - 提现密码（用于安全验证）
 - 系统会验证用户是否已设置提现密码
 - 系统会验证提供的提现密码是否正确
+- 提现金额和手续费会在申请时自动计算（根据用户类型：新用户10%手续费，老用户按配置费率）
+- 申请提交后状态为 `pending`，等待管理员审核
+
+#### 提现审核（管理员命令）
+管理员使用 Artisan 命令进行提现审核和处理：
+```bash
+# 查看所有提现申请
+php artisan withdraw:review --list
+
+# 审核通过
+php artisan withdraw:review --id=1 --action=approve --note="审核通过"
+
+# 审核拒绝
+php artisan withdraw:review --id=1 --action=reject --note="地址格式不正确"
+
+# 处理转账（自动发送 TRC20 USDT）
+php artisan withdraw:review --id=1 --action=process --verify-amount
+
+# 处理转账（手动提供 TXID）
+php artisan withdraw:review --id=1 --action=process --txid="0x..." --note="转账完成"
+```
+
+**提现状态流转**：
+- `pending` → `approved` → `paid`（正常流程）
+- `pending` → `rejected`（拒绝流程）
+- `approved` → `failed`（转账失败）
+
+**注意**：`GET /api/v1/withdrawals/calc-withdrawable` 接口已移除，提现金额计算现在在申请时自动完成。
 
 #### 新增提现设置接口
 - **设置提现密码** (`POST /api/v1/withdraw/password`)
@@ -113,8 +141,9 @@ Scramble 会自动从以下内容生成文档：
 
 ### 提现模块
 - `GET /api/v1/withdrawals` - 获取提现历史
-- `GET /api/v1/withdrawals/calc-withdrawable` - 计算可提现金额
 - `POST /api/v1/withdrawals/apply` - 申请提现（需要提供提现密码进行验证）
+
+**注意**：`GET /api/v1/withdrawals/calc-withdrawable` 接口已移除。提现金额计算现在在申请时自动完成。
 
 ### 提现设置模块
 - `POST /api/v1/withdraw/password` - 设置/修改提现密码

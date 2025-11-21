@@ -24,17 +24,24 @@ class TronUsdtContract
     public function getBalance(string $address): float
     {
         try {
-            // Call balanceOf(address) function
-            $functionSelector = '70a08231'; // balanceOf(address) function selector
+            // Use triggerconstantcontract method (most reliable)
+            // This method directly calls the contract's balanceOf function
             $addressHex = $this->addressToHex($address);
+            $contractAddressHex = $this->addressToHex($this->contractAddress);
+            
+            // Parameter encoding for balanceOf(address):
+            // Remove '41' prefix (first 2 chars) to get 20-byte address
+            // Pad left with zeros to 64 hex chars (32 bytes)
+            $addressWithoutPrefix = substr($addressHex, 2); // Remove '41' prefix
+            $parameter = str_pad($addressWithoutPrefix, 64, '0', STR_PAD_LEFT);
             
             $url = "{$this->baseUrl}/wallet/triggerconstantcontract";
             
             $params = [
-                'owner_address' => $address,
-                'contract_address' => $this->contractAddress,
+                'owner_address' => $addressHex,  // Must use hex format
+                'contract_address' => $contractAddressHex,  // Must use hex format
                 'function_selector' => 'balanceOf(address)',
-                'parameter' => $addressHex,
+                'parameter' => $parameter,
             ];
 
             $headers = [];
@@ -48,6 +55,7 @@ class TronUsdtContract
                 Log::error('TronUsdtContract: Failed to get balance', [
                     'address' => $address,
                     'status' => $response->status(),
+                    'response' => $response->body(),
                 ]);
                 return 0.0;
             }
@@ -56,16 +64,23 @@ class TronUsdtContract
             $result = $data['constant_result'][0] ?? '';
             
             if (empty($result)) {
+                Log::warning('TronUsdtContract: Empty result from balance query', [
+                    'address' => $address,
+                    'response' => $data,
+                ]);
                 return 0.0;
             }
 
             // Parse hex result and convert to decimal (USDT has 6 decimals)
+            // Remove 0x prefix if present
+            $result = ltrim($result, '0x');
             $value = hexdec($result);
             return (float) bcdiv((string)$value, '1000000', 6);
         } catch (\Exception $e) {
             Log::error('TronUsdtContract: Exception getting balance', [
                 'address' => $address,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
             return 0.0;
         }

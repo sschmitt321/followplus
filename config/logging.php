@@ -127,6 +127,14 @@ return [
             'path' => storage_path('logs/laravel.log'),
         ],
 
+        'tron-deposits' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/tron-deposits.log'),
+            'level' => env('LOG_LEVEL', 'info'),
+            'days' => 30, // 保留30天日志
+            'replace_placeholders' => true,
+        ],
+
     ],
 
 ];

@@ -22,6 +22,9 @@ class Withdrawal extends Model
         'to_address',
         'chain',
         'txid',
+        'review_note',
+        'reviewed_at',
+        'reviewed_by',
     ];
 
     protected function casts(): array
@@ -30,6 +33,7 @@ class Withdrawal extends Model
             'amount_request' => MoneyCast::class,
             'fee' => MoneyCast::class,
             'amount_actual' => MoneyCast::class,
+            'reviewed_at' => 'datetime',
         ];
     }
 
@@ -41,5 +45,10 @@ class Withdrawal extends Model
     public function currencyModel(): BelongsTo
     {
         return $this->belongsTo(Currency::class, 'currency', 'name');
+    }
+
+    public function reviewer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewed_by');
     }
 }
