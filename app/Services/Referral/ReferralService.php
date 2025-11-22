@@ -8,6 +8,22 @@ use Illuminate\Support\Facades\DB;
 
 class ReferralService
 {
+    public function __construct()
+    {
+    }
+    
+    /**
+     * Get RewardService instance (lazy-loaded to avoid circular dependency).
+     */
+    private function getRewardService(): ?RewardService
+    {
+        try {
+            return app(RewardService::class);
+        } catch (\Exception $e) {
+            // If RewardService cannot be resolved (e.g., circular dependency), return null
+            return null;
+        }
+    }
     /**
      * Bind inviter to user (called during registration).
      */
@@ -93,8 +109,28 @@ class ReferralService
         
         // Recalculate ambassador level based on team_count
         $newLevel = $this->calculateAmbassadorLevel($teamCount);
-        if ($stat->ambassador_level !== $newLevel) {
+        $oldLevel = $stat->ambassador_level;
+        
+        if ($oldLevel !== $newLevel) {
             $stat->update(['ambassador_level' => $newLevel]);
+            
+            // Auto-grant ambassador reward when level up (if RewardService is available)
+            if ($newLevel !== 'L0') {
+                $rewardService = $this->getRewardService();
+                if ($rewardService) {
+                    try {
+                        $rewardService->grantAmbassadorOneOff($userId, $newLevel);
+                    } catch (\Exception $e) {
+                        // Log error but don't fail the recalculation
+                        \Log::error("Failed to grant ambassador reward on level up", [
+                            'user_id' => $userId,
+                            'old_level' => $oldLevel,
+                            'new_level' => $newLevel,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
         }
     }
 

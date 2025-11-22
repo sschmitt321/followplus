@@ -6,6 +6,7 @@ use App\Models\RefEvent;
 use App\Models\RefReward;
 use App\Models\RefStat;
 use App\Models\User;
+use App\Models\Withdrawal;
 use App\Services\Ledger\LedgerService;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
@@ -232,16 +233,38 @@ class RewardService
 
     /**
      * Dispatch dividend for a cycle date.
+     * 
+     * Calculates platform revenue from withdrawal fees for the specified cycle period
+     * and distributes dividends to ambassadors based on their dividend rates.
+     * 
+     * @param string $cycleDate Cycle date in Y-m-d format (e.g., '2025-11-20')
+     *                          For weekly cycles, this should be the Monday date of the week
      */
     public function dispatchDividend(string $cycleDate): void
     {
+        // Parse cycle date and calculate period (weekly cycle: Monday to Sunday)
+        $cycleStart = \Carbon\Carbon::parse($cycleDate)->startOfWeek(); // Monday
+        $cycleEnd = $cycleStart->copy()->endOfWeek(); // Sunday
+        
+        // Calculate platform revenue from withdrawal fees for this cycle
+        $platformRevenue = $this->calculatePlatformRevenue($cycleStart, $cycleEnd);
+        
+        if ($platformRevenue->isZero()) {
+            \Log::info("No platform revenue for cycle {$cycleDate}, skipping dividend dispatch");
+            return;
+        }
+        
+        \Log::info("Dispatching dividends for cycle {$cycleDate}", [
+            'cycle_start' => $cycleStart->format('Y-m-d'),
+            'cycle_end' => $cycleEnd->format('Y-m-d'),
+            'platform_revenue' => $platformRevenue->toFixed(6),
+        ]);
+        
         // Get all users with dividend_rate > 0
         $stats = RefStat::where('dividend_rate', '>', 0)->get();
         
         foreach ($stats as $stat) {
-            // Calculate dividend based on platform revenue (placeholder)
-            // In real implementation, this would be based on actual platform revenue
-            $platformRevenue = Decimal::of('1000000'); // Placeholder
+            // Calculate dividend based on platform revenue and user's dividend rate
             $dividendAmount = $platformRevenue->multiply($stat->dividend_rate);
             
             if ($dividendAmount->isZero()) {
@@ -253,7 +276,12 @@ class RewardService
                 'trigger_user_id' => $stat->user_id,
                 'event_type' => 'dividend',
                 'amount' => $dividendAmount,
-                'meta_json' => ['cycle_date' => $cycleDate],
+                'meta_json' => [
+                    'cycle_date' => $cycleDate,
+                    'cycle_start' => $cycleStart->format('Y-m-d'),
+                    'cycle_end' => $cycleEnd->format('Y-m-d'),
+                    'platform_revenue' => $platformRevenue->toFixed(6),
+                ],
             ]);
 
             // Create reward
@@ -265,9 +293,39 @@ class RewardService
                 $dividendAmount,
                 $event->id,
                 $bizId,
-                ['cycle_date' => $cycleDate]
+                [
+                    'cycle_date' => $cycleDate,
+                    'cycle_start' => $cycleStart->format('Y-m-d'),
+                    'cycle_end' => $cycleEnd->format('Y-m-d'),
+                    'platform_revenue' => $platformRevenue->toFixed(6),
+                ]
             );
         }
+    }
+    
+    /**
+     * Calculate platform revenue from withdrawal fees for a given period.
+     * 
+     * Platform revenue = sum of all withdrawal fees from completed withdrawals (status = 'paid')
+     * 
+     * @param \Carbon\Carbon $startDate Start date (inclusive)
+     * @param \Carbon\Carbon $endDate End date (inclusive)
+     * @return Decimal Total platform revenue
+     */
+    private function calculatePlatformRevenue(\Carbon\Carbon $startDate, \Carbon\Carbon $endDate): Decimal
+    {
+        $withdrawals = Withdrawal::where('status', 'paid')
+            ->whereBetween('updated_at', [
+                $startDate->startOfDay()->utc(),
+                $endDate->endOfDay()->utc(),
+            ])
+            ->get();
+        
+        $totalRevenue = $withdrawals->reduce(function (Decimal $carry, Withdrawal $withdrawal) {
+            return $carry->add($withdrawal->fee ?? Decimal::zero());
+        }, Decimal::zero());
+        
+        return $totalRevenue;
     }
 
     /**

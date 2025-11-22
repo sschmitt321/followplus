@@ -8,17 +8,31 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// // Schedule T+1 newbie rewards (daily at 00:10)
-// Schedule::command('rewards:grant-newbie-next-day')
-//     ->dailyAt('00:10')
-//     ->withoutOverlapping()
-//     ->runInBackground();
+// Schedule T+1 newbie rewards (daily at 00:10)
+// Grants 10% reward to newbies on the day after their first deposit
+Schedule::command('rewards:grant-newbie-next-day')
+    ->dailyAt('00:10')
+    ->withoutOverlapping(10) // Auto-release lock after 10 minutes
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/rewards-newbie.log'))
+    ->onFailure(function () {
+        \Log::error('GrantNewbieNextDayRewards: Scheduled task failed', [
+            'message' => '定时任务执行失败，请检查日志',
+        ]);
+    });
 
-// // Schedule dividend dispatch (weekly on Monday at 00:00)
-// Schedule::command('rewards:dispatch-dividends')
-//     ->weeklyOn(1, '00:00')
-//     ->withoutOverlapping()
-//     ->runInBackground();
+// Schedule dividend dispatch (weekly on Monday at 00:00)
+// Distributes platform revenue (withdrawal fees) to ambassadors based on their dividend rates
+Schedule::command('rewards:dispatch-dividends')
+    ->weeklyOn(1, '00:00') // Monday at 00:00
+    ->withoutOverlapping(30) // Auto-release lock after 30 minutes
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/rewards-dividends.log'))
+    ->onFailure(function () {
+        \Log::error('DispatchDividends: Scheduled task failed', [
+            'message' => '定时任务执行失败，请检查日志',
+        ]);
+    });
 
 // // Schedule follow window generation (daily at 00:05)
 // Schedule::command('follow:generate-windows')
