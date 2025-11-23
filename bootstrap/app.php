@@ -12,6 +12,16 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Add CORS middleware to API routes
+        $middleware->api(prepend: [
+            \App\Http\Middleware\CorsMiddleware::class,
+        ]);
+        
+        // Exclude docs routes from CSRF verification
+        $middleware->validateCsrfTokens(except: [
+            'docs/*',
+        ]);
+        
         $middleware->alias([
             'idempotency' => \App\Http\Middleware\IdempotencyMiddleware::class,
             'rate.limit' => \App\Http\Middleware\RateLimitMiddleware::class,

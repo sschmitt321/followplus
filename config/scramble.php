@@ -129,7 +129,7 @@ return [
 
     'middleware' => [
         'web',
-        RestrictedDocsAccess::class,
+        // RestrictedDocsAccess::class, // 注释掉以允许在生产环境访问文档
     ],
 
     'extensions' => [],

@@ -325,6 +325,12 @@ sudo systemctl restart php8.2-fpm
 - 检查存储目录权限：`ls -la storage`
 - 确保用户和组正确：`sudo chown -R www-data:www-data storage`
 
+### CORS 跨域错误
+- CORS 中间件已自动配置，允许 `app.sgex.info` 访问 `api.sgex.info`
+- 如果前端域名变更，需要修改 `app/Http/Middleware/CorsMiddleware.php` 中的 `$allowedOrigins` 数组
+- 确保前端请求包含正确的 `Origin` 头
+- 清除配置缓存：`php artisan config:clear`
+
 ---
 
 **完成以上步骤后，系统即可正常运行！**
@@ -333,16 +339,17 @@ sudo systemctl restart php8.2-fpm
 - 核心步骤
 - 服务器环境准备 - 安装 PHP 8.2+、MySQL、Nginx、Composer
 - 部署代码 - 克隆或上传代码到服务器
-- 安装依赖 - composer install --no-dev --optimize-autoloader
+- 安装依赖 - composer install
 - 配置 .env 文件 - 复制 .env.example 并配置数据库、JWT、Tron 等
 - 生成密钥 - php artisan key:generate 和 php artisan jwt:secret
 - 准备数据库 - 创建数据库和用户
-- 运行数据库迁移 - php artisan migrate --force
+- 运行数据库迁移 - php artisan migrate && php artisan db:seed
 - 初始化 HD 钱包 - php artisan tron:init-hd-wallet（重要）
 - 设置文件权限 - storage 和 bootstrap/cache 目录权限
 - 缓存配置 - php artisan config:cache 等
-- 配置 Crontab - 添加 * * * * * cd /path && php artisan schedule:run
+- 配置 Crontab - 添加 * * * * * cd //www/wwwroot/api.sgex.info/followplus-main && /usr/local/php artisan schedule:run
 - 配置 Web 服务器 - Nginx/Apache 指向 public 目录
 - 配置 SSL 证书 - Let's Encrypt
 - 验证部署 - 测试 API 和定时任务
 - 监控日志 - 查看各日志文件
+- 宝塔系统，需要删除putenv，proc_open禁用，PHP需要安装gmt和fileinfo，mbstring模块。
