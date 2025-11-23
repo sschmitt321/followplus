@@ -212,7 +212,7 @@ php artisan user:reset-password user@example.com newpassword123 --force
 快速创建跟单窗口并自动生成邀请码：
 
 ```bash
-php artisan follow:create-window-with-token {symbol_id} {window_type} {start_time} {duration_hours}
+php artisan follow:create-window-with-token {symbol_id} {window_type} {start_time} {duration_minutes}
 ```
 
 **参数说明**：
@@ -228,7 +228,7 @@ php artisan follow:create-window-with-token {symbol_id} {window_type} {start_tim
 - `start_time`: 开始时间（必需）
   - 格式：`YYYY-MM-DD HH:MM:SS` 或 `YYYY-MM-DD`
   - 如果只提供日期，默认使用当前时间
-- `duration_hours`: 持续时间（小时，必需）
+- `duration_minutes`: 持续时间（分钟，必需）
 
 **选项**：
 - `--token=`: 自定义邀请码（可选，不提供则自动生成8位大写字母）
@@ -238,14 +238,17 @@ php artisan follow:create-window-with-token {symbol_id} {window_type} {start_tim
 **示例**：
 
 ```bash
-# 创建BTC/USDT的固定窗口，今天14:00开始，持续1小时
-php artisan follow:create-window-with-token 1 fixed_daily "2025-11-18 14:00:00" 1
+# 创建BTC/USDT的固定窗口，今天14:00开始，持续60分钟
+php artisan follow:create-window-with-token 1 fixed_daily "2025-11-18 14:00:00" 60
 
-# 创建ETH/USDT的新手奖励窗口，使用自定义邀请码
-php artisan follow:create-window-with-token 2 newbie_bonus "2025-11-18 15:00:00" 2 --token="MYCODE123"
+# 创建5分钟有效期的跟单码
+php artisan follow:create-window-with-token 1 fixed_daily "2025-11-18 14:00:00" 5
 
-# 创建BNB/USDT窗口，自定义奖励率
-php artisan follow:create-window-with-token 3 fixed_daily "2025-11-18 16:00:00" 1.5 --reward-min=0.6 --reward-max=0.8
+# 创建ETH/USDT的新手奖励窗口，使用自定义邀请码（120分钟）
+php artisan follow:create-window-with-token 2 newbie_bonus "2025-11-18 15:00:00" 120 --token="MYCODE123"
+
+# 创建BNB/USDT窗口，自定义奖励率（90分钟）
+php artisan follow:create-window-with-token 3 fixed_daily "2025-11-18 16:00:00" 90 --reward-min=0.6 --reward-max=0.8
 ```
 
 ## 默认管理员账号

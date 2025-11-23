@@ -21,7 +21,7 @@ class CreateFollowWindowWithToken extends Command
                             {symbol_id : 交易对ID (1=BTC/USDT, 2=ETH/USDT, 3=BNB/USDT, 4=SOL/USDT)}
                             {window_type : 窗口类型 (fixed_daily/newbie_bonus/inviter_bonus)}
                             {start_time : 开始时间 (格式: YYYY-MM-DD HH:MM:SS 或 YYYY-MM-DD)}
-                            {duration_hours : 持续时间（小时）}
+                            {duration_minutes : 持续时间（分钟）}
                             {--token= : 自定义邀请码（可选，不提供则自动生成）}
                             {--reward-min=0.5 : 最小奖励率 (0-1)}
                             {--reward-max=0.6 : 最大奖励率 (0-1)}
@@ -42,7 +42,7 @@ class CreateFollowWindowWithToken extends Command
         $symbolId = (int) $this->argument('symbol_id');
         $windowType = $this->argument('window_type');
         $startTime = $this->argument('start_time');
-        $durationHours = (float) $this->argument('duration_hours');
+        $durationMinutes = (int) $this->argument('duration_minutes');
         $customToken = $this->option('token');
         $rewardMin = (float) $this->option('reward-min');
         $rewardMax = (float) $this->option('reward-max');
@@ -76,8 +76,14 @@ class CreateFollowWindowWithToken extends Command
             return Command::FAILURE;
         }
 
+        // 验证持续时间
+        if ($durationMinutes <= 0) {
+            $this->error("持续时间必须大于 0 分钟");
+            return Command::FAILURE;
+        }
+
         // 计算过期时间
-        $expireAt = $startAt->copy()->addHours($durationHours);
+        $expireAt = $startAt->copy()->addMinutes($durationMinutes);
 
         // 验证奖励率
         if ($rewardMin < 0 || $rewardMin > 1 || $rewardMax < 0 || $rewardMax > 1) {
@@ -101,7 +107,7 @@ class CreateFollowWindowWithToken extends Command
                 ['窗口类型', $windowType],
                 ['开始时间', $startAtUtc8->format('Y-m-d H:i:s') . ' (UTC+8)'],
                 ['过期时间', $expireAtUtc8->format('Y-m-d H:i:s') . ' (UTC+8)'],
-                ['持续时间', "{$durationHours} 小时"],
+                ['持续时间', "{$durationMinutes} 分钟"],
                 ['奖励率', "{$rewardMin} - {$rewardMax}"],
             ]
         );

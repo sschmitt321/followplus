@@ -288,14 +288,14 @@ php artisan kyc:review --id=1 --action=reject --reason="身份证照片不清晰
 
 **用法**：
 ```bash
-php artisan follow:create-window-with-token {symbol_id} {window_type} {start_time} {duration_hours} [--token=] [--reward-min=0.5] [--reward-max=0.6] [--auto-token]
+php artisan follow:create-window-with-token {symbol_id} {window_type} {start_time} {duration_minutes} [--token=] [--reward-min=0.5] [--reward-max=0.6] [--auto-token]
 ```
 
 **参数**：
 - `symbol_id`：交易对ID（1=BTC/USDT, 2=ETH/USDT, 3=BNB/USDT, 4=SOL/USDT）（必填）
 - `window_type`：窗口类型（fixed_daily/newbie_bonus/inviter_bonus）（必填）
 - `start_time`：开始时间（格式: YYYY-MM-DD HH:MM:SS 或 YYYY-MM-DD）（必填）
-- `duration_hours`：持续时间（小时）（必填）
+- `duration_minutes`：持续时间（分钟）（必填）
 
 **选项**：
 - `--token`：自定义邀请码（可选，不提供则自动生成）
@@ -305,17 +305,20 @@ php artisan follow:create-window-with-token {symbol_id} {window_type} {start_tim
 
 **示例**：
 ```bash
-# 创建固定日窗口
-php artisan follow:create-window-with-token 1 fixed_daily "2025-11-20 13:00:00" 1
+# 创建固定日窗口（60分钟）
+php artisan follow:create-window-with-token 1 fixed_daily "2025-11-20 13:00:00" 60
 
-# 创建新手奖励窗口（使用日期格式）
-php artisan follow:create-window-with-token 2 newbie_bonus "2025-11-20" 1
+# 创建5分钟有效期的跟单码
+php artisan follow:create-window-with-token 1 fixed_daily "2025-11-20 13:00:00" 5
+
+# 创建新手奖励窗口（使用日期格式，60分钟）
+php artisan follow:create-window-with-token 2 newbie_bonus "2025-11-20" 60
 
 # 自定义邀请码
-php artisan follow:create-window-with-token 1 fixed_daily "2025-11-20 13:00:00" 1 --token=MYTOKEN123
+php artisan follow:create-window-with-token 1 fixed_daily "2025-11-20 13:00:00" 60 --token=MYTOKEN123
 
 # 自定义奖励率
-php artisan follow:create-window-with-token 1 fixed_daily "2025-11-20 13:00:00" 1 --reward-min=0.4 --reward-max=0.7
+php artisan follow:create-window-with-token 1 fixed_daily "2025-11-20 13:00:00" 60 --reward-min=0.4 --reward-max=0.7
 ```
 
 **说明**：
