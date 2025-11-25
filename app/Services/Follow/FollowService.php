@@ -2,6 +2,8 @@
 
 namespace App\Services\Follow;
 
+use App\Models\Deposit;
+use App\Models\FollowBonusWindow;
 use App\Models\FollowOrder;
 use App\Models\FollowWindow;
 use App\Models\InviteToken;
@@ -348,22 +350,133 @@ class FollowService
     /**
      * Check if user has inviter ratio >= 30%.
      * 
-     * Inviter ratio = direct_count / team_count * 100%
-     * If team_count is 0, ratio is 0 (not eligible)
+     * Inviter ratio = 直接邀请的新人充值总额 / 邀请者当前总资金
+     * If inviter total balance is 0, ratio is 0 (not eligible)
+     * 
+     * If ratio >= 30%, automatically grant 2 days bonus window with 4 extra quota per day.
      */
     private function hasInviterRatio30Pct(User $user): bool
     {
-        $stat = RefStat::where('user_id', $user->id)->first();
+        // Get inviter's total balance
+        $inviterTotalBalance = $this->assetsService->getTotalBalance($user->id);
         
-        if (!$stat || $stat->team_count == 0) {
-            return false;
+        if ($inviterTotalBalance->isZero()) {
+            return false; // No balance, cannot calculate ratio
         }
 
-        // Calculate ratio: direct_count / team_count
-        $ratio = $stat->direct_count / $stat->team_count;
+        // Get total deposit amount from directly invited users
+        $directInvitedUserIds = User::where('invited_by_user_id', $user->id)
+            ->pluck('id')
+            ->toArray();
+        
+        if (empty($directInvitedUserIds)) {
+            return false; // No direct invites
+        }
+
+        // Calculate total deposit amount from directly invited users
+        $totalDepositAmount = Deposit::whereIn('user_id', $directInvitedUserIds)
+            ->where('status', 'paid') // Only count paid deposits
+            ->sum('amount');
+        
+        if ($totalDepositAmount <= 0) {
+            return false; // No deposits from direct invites
+        }
+
+        // Calculate ratio: total deposit amount / inviter total balance
+        $totalDepositDecimal = Decimal::of($totalDepositAmount);
+        $ratio = $totalDepositDecimal->dividedBy($inviterTotalBalance);
         
         // Check if ratio >= 30% (0.3)
-        return $ratio >= 0.3;
+        $hasRatio = $ratio->isGreaterThanOrEqualTo(Decimal::of('0.3'));
+        
+        // If ratio >= 30%, grant bonus window (2 days, 4 extra quota per day)
+        if ($hasRatio) {
+            $this->grantInviterBonusWindow($user->id);
+        }
+        
+        return $hasRatio;
+    }
+
+    /**
+     * Grant bonus window for inviter with ratio >= 30%.
+     * Creates a 2-day bonus window (today and tomorrow) with 2 extra quota per day (total 4 times).
+     * If user already has a bonus window, appends a new 2-day window starting from the day after the existing window ends.
+     * 
+     * Maximum duration: 30 days from today (to prevent unlimited accumulation).
+     */
+    private function grantInviterBonusWindow(int $userId): void
+    {
+        $today = TimeHelper::now()->format('Y-m-d');
+        $maxEndDate = TimeHelper::now()->addDays(60)->format('Y-m-d'); // Maximum 60 days from today
+        
+        // Find the latest bonus window for this user
+        $latestBonus = FollowBonusWindow::where('user_id', $userId)
+            ->where('reason', 'inviter_ratio30pct')
+            ->orderBy('end_date', 'desc')
+            ->first();
+        
+        if ($latestBonus && $latestBonus->end_date >= $today) {
+            // User already has an active or future bonus window
+            // Append a new 2-day window starting from the day after the existing window ends
+            $newStartDate = TimeHelper::parse($latestBonus->end_date)
+                ->addDay()
+                ->format('Y-m-d');
+            $newEndDate = TimeHelper::parse($newStartDate)
+                ->addDay()
+                ->format('Y-m-d'); // 2 days: newStartDate + next day
+            
+            // Check maximum duration limit (30 days from today)
+            if ($newEndDate > $maxEndDate) {
+                // Already reached maximum duration, don't create new window
+                return;
+            }
+            
+            // Check if this new window period already exists
+            $existingNewBonus = FollowBonusWindow::where('user_id', $userId)
+                ->where('reason', 'inviter_ratio30pct')
+                ->where('start_date', '<=', $newEndDate)
+                ->where('end_date', '>=', $newStartDate)
+                ->first();
+            
+            if (!$existingNewBonus) {
+                // Create new bonus window: 2 days × 2 extra quota per day = 4 total extra quota
+                FollowBonusWindow::create([
+                    'user_id' => $userId,
+                    'reason' => 'inviter_ratio30pct',
+                    'start_date' => $newStartDate,
+                    'end_date' => $newEndDate,
+                    'daily_extra_quota' => 2, // 2 extra quota per day, total 4 times in 2 days
+                ]);
+            }
+        } else {
+            // No existing bonus window or existing window has expired
+            // Create a new 2-day window starting from today
+            $endDate = TimeHelper::now()->addDays(1)->format('Y-m-d'); // Tomorrow (2 days total: today + tomorrow)
+            
+            // Check maximum duration limit (30 days from today)
+            if ($endDate > $maxEndDate) {
+                // Already reached maximum duration, don't create new window
+                return;
+            }
+            
+            // Check if this period already exists
+            $existingBonus = FollowBonusWindow::where('user_id', $userId)
+                ->where('reason', 'inviter_ratio30pct')
+                ->where('start_date', '<=', $endDate)
+                ->where('end_date', '>=', $today)
+                ->first();
+            
+            if (!$existingBonus) {
+                // Create new bonus window: 2 days × 2 extra quota per day = 4 total extra quota
+                FollowBonusWindow::create([
+                    'user_id' => $userId,
+                    'reason' => 'inviter_ratio30pct',
+                    'start_date' => $today,
+                    'end_date' => $endDate,
+                    'daily_extra_quota' => 2, // 2 extra quota per day, total 4 times in 2 days
+                ]);
+            }
+        }
     }
 
     /**
@@ -396,18 +509,34 @@ class FollowService
 
         // inviter_bonus: Check inviter ratio
         if ($windowType === 'inviter_bonus') {
-            $stat = RefStat::where('user_id', $user->id)->first();
+            // Get inviter's total balance
+            $inviterTotalBalance = $this->assetsService->getTotalBalance($user->id);
             
-            if (!$stat) {
-                return 'User has no referral statistics';
+            if ($inviterTotalBalance->isZero()) {
+                return 'User has no balance';
             }
             
-            if ($stat->team_count == 0) {
-                return 'User has no team members';
+            // Get total deposit amount from directly invited users
+            $directInvitedUserIds = User::where('invited_by_user_id', $user->id)
+                ->pluck('id')
+                ->toArray();
+            
+            if (empty($directInvitedUserIds)) {
+                return 'User has no direct invites';
             }
             
-            $ratio = ($stat->direct_count / $stat->team_count) * 100;
-            return "User inviter ratio is {$ratio}% (required: >= 30%)";
+            $totalDepositAmount = Deposit::whereIn('user_id', $directInvitedUserIds)
+                ->where('status', 'paid')
+                ->sum('amount');
+            
+            if ($totalDepositAmount <= 0) {
+                return 'No deposits from direct invites';
+            }
+            
+            $totalDepositDecimal = Decimal::of($totalDepositAmount);
+            $ratio = $totalDepositDecimal->dividedBy($inviterTotalBalance)->multipliedBy(100);
+            
+            return "User inviter ratio is {$ratio->toFixed(2)}% (required: >= 30%). Direct invites deposit: {$totalDepositDecimal->toFixed(2)}, Inviter balance: {$inviterTotalBalance->toFixed(2)}";
         }
 
         return "Unknown window type: {$windowType}";
