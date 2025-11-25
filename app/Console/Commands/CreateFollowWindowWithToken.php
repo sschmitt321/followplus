@@ -6,6 +6,7 @@ use App\Models\FollowWindow;
 use App\Models\InviteToken;
 use App\Models\Symbol;
 use App\Services\Audit\AuditService;
+use App\Services\SupabaseBotService;
 use App\Support\TimeHelper;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
@@ -37,7 +38,7 @@ class CreateFollowWindowWithToken extends Command
     /**
      * Execute the console command.
      */
-    public function handle(AuditService $auditService): int
+    public function handle(AuditService $auditService, SupabaseBotService $botService): int
     {
         $symbolId = (int) $this->argument('symbol_id');
         $windowType = $this->argument('window_type');
@@ -174,6 +175,35 @@ class CreateFollowWindowWithToken extends Command
                 null,
                 $inviteToken->toArray()
             );
+
+            // 发送消息到所有群组
+            try {
+                $windowTypeNames = [
+                    'fixed_daily' => '固定每日窗口',
+                    'newbie_bonus' => '新人加餐窗',
+                    'inviter_bonus' => '邀请人加餐窗',
+                ];
+                
+                $windowTypeName = $windowTypeNames[$windowType] ?? $windowType;
+                $startTimeStr = $startAtUtc8->format('Y-m-d H:i:s');
+                $symbolName = "{$symbol->base}/{$symbol->quote}";
+                
+                $message = sprintf(
+                    "🎯 新跟单码已创建\n\n交易对：%s\n类型：%s\n开始时间：%s (UTC+8)\n跟单码：%s",
+                    $symbolName,
+                    $windowTypeName,
+                    $startTimeStr,
+                    $token
+                );
+                
+                $this->info("正在发送消息到所有群组...");
+                $botService->send($message);
+                $this->info("✓ 消息已成功发送到所有群组");
+            } catch (\Exception $e) {
+                // 发送消息失败不影响命令执行，只记录警告
+                $this->warn("⚠ 发送群组消息失败: {$e->getMessage()}");
+                $this->warn("   跟单窗口和邀请码已成功创建，但消息未发送到群组");
+            }
 
             return Command::SUCCESS;
         } catch (\Exception $e) {
