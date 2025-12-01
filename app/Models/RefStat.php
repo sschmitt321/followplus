@@ -14,7 +14,9 @@ class RefStat extends Model
     protected $fillable = [
         'user_id',
         'direct_count',
+        'direct_active_count',
         'team_count',
+        'team_active_count',
         'ambassador_level',
         'ambassador_reward_total',
         'dividend_rate',

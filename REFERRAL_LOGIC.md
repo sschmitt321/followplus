@@ -133,8 +133,16 @@ if ($this->rewardService) {
    - 调用 `ReferralService::updateReferralStats()`
    - 自动更新邀请者的 `direct_count` 和 `team_count`
    - 同时更新邀请链上所有上级用户的 `team_count`
+   - ⚠️ 注意：此时激活用户数为 0（用户还未充值）
    
-2. **用户提现时**：如果新人提现，会断链并更新统计
+2. **用户首次充值时**：自动更新邀请者的激活用户数统计
+   - 调用 `RewardService::grantReferralOnDeposit()`
+   - 发放首充奖励后，自动调用 `ReferralService::recalcTeamStats()`
+   - 更新邀请者的 `direct_active_count` 和 `team_active_count`
+   - 同时更新邀请链上所有上级用户的 `team_active_count`
+   - ✅ 只在首次充值时触发（有幂等性检查，后续充值不会重复触发）
+   
+3. **用户提现时**：如果新人提现，会断链并更新统计
    - 调用 `ReferralService::onDirectDownlineWithdrawPaid()`
    - 移除邀请关系，更新相关统计数据
 
@@ -182,7 +190,14 @@ WHERE user_id = 3;
 | 指标 | 计算时机 | 是否需要充值 |
 |------|---------|------------|
 | `direct_count` | **注册时** | ❌ 不需要，注册就算 |
+| `direct_active_count` | **首次充值时** | ✅ 需要，首次充值激活后更新 |
 | `team_count` | **注册时** | ❌ 不需要，注册就算 |
+| `team_active_count` | **首次充值时** | ✅ 需要，首次充值激活后更新 |
+
+**示例**：
+- 用户A邀请了B、C、D三个人
+- B和C充值了，D未充值
+- 结果：`direct_count = 3`，`direct_active_count = 2`
 
 ### 奖励发放规则
 

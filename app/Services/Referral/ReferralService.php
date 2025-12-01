@@ -2,6 +2,7 @@
 
 namespace App\Services\Referral;
 
+use App\Models\Deposit;
 use App\Models\RefStat;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -96,15 +97,23 @@ class ReferralService
         // Count direct downlines
         $directCount = User::where('invited_by_user_id', $userId)->count();
         
+        // Count active direct downlines (users who have at least one confirmed deposit)
+        $directActiveCount = $this->countActiveDirectDownlines($userId);
+        
         // Count total team size (including all subtree)
         $teamCount = $this->countSubtreeSize($userId);
+        
+        // Count active team size (including all subtree, only users with confirmed deposits)
+        $teamActiveCount = $this->countActiveSubtreeSize($userId);
         
         // Get or create ref_stat
         $stat = RefStat::firstOrCreate(
             ['user_id' => $userId],
             [
                 'direct_count' => 0,
+                'direct_active_count' => 0,
                 'team_count' => 0,
+                'team_active_count' => 0,
                 'ambassador_level' => 'L0',
                 'dividend_rate' => 0,
             ]
@@ -112,7 +121,9 @@ class ReferralService
         
         $stat->update([
             'direct_count' => $directCount,
+            'direct_active_count' => $directActiveCount,
             'team_count' => $teamCount,
+            'team_active_count' => $teamActiveCount,
         ]);
         
         // Recalculate ambassador level based on team_count
@@ -166,6 +177,56 @@ class ReferralService
     }
 
     /**
+     * Count active direct downlines (users who have at least one confirmed deposit).
+     */
+    private function countActiveDirectDownlines(int $userId): int
+    {
+        // Get all direct downlines
+        $directDownlines = User::where('invited_by_user_id', $userId)->pluck('id');
+        
+        if ($directDownlines->isEmpty()) {
+            return 0;
+        }
+        
+        // Count how many of them have at least one confirmed deposit
+        return Deposit::whereIn('user_id', $directDownlines)
+            ->where('status', 'confirmed')
+            ->distinct()
+            ->count('user_id');
+    }
+
+    /**
+     * Count active subtree size (users with at least one confirmed deposit).
+     */
+    private function countActiveSubtreeSize(int $userId): int
+    {
+        $user = User::findOrFail($userId);
+        
+        // Build path prefix: ref_path + '/' + userId
+        $basePath = rtrim($user->ref_path, '/');
+        if ($basePath === '') {
+            $pathPrefix = '/' . $userId;
+        } else {
+            $pathPrefix = $basePath . '/' . $userId;
+        }
+        
+        // Get all users in the subtree
+        $subtreeUserIds = User::where('ref_path', 'like', $pathPrefix . '%')
+            ->where('id', '!=', $userId)
+            ->pluck('id');
+        
+        if ($subtreeUserIds->isEmpty()) {
+            return 0;
+        }
+        
+        // Count how many of them have at least one confirmed deposit
+        return Deposit::whereIn('user_id', $subtreeUserIds)
+            ->where('status', 'confirmed')
+            ->distinct()
+            ->count('user_id');
+    }
+
+    /**
      * Calculate ambassador level based on team count.
      * 
      * L1: 10+ team members
@@ -214,7 +275,9 @@ class ReferralService
             ['user_id' => $userId],
             [
                 'direct_count' => 0,
+                'direct_active_count' => 0,
                 'team_count' => 0,
+                'team_active_count' => 0,
                 'ambassador_level' => 'L0',
                 'dividend_rate' => 0,
             ]

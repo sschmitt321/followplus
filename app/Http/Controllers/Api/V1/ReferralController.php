@@ -40,7 +40,9 @@ class ReferralController extends Controller
             $stat = RefStat::create([
                 'user_id' => $user->id,
                 'direct_count' => 0,
+                'direct_active_count' => 0,
                 'team_count' => 0,
+                'team_active_count' => 0,
                 'ambassador_level' => 'L0',
                 'dividend_rate' => 0,
                 'total_rewards' => '0.000000', // Ensure total_rewards is not null
@@ -52,7 +54,9 @@ class ReferralController extends Controller
 
         return response()->json([
             'direct_count' => $stat->direct_count,
+            'direct_active_count' => $stat->direct_active_count ?? 0,
             'team_count' => $stat->team_count,
+            'team_active_count' => $stat->team_active_count ?? 0,
             'level' => $stat->ambassador_level,
             'dividend_rate' => (float) $stat->dividend_rate,
             'total_rewards' => $totalRewards->toFixed(6),

@@ -109,6 +109,21 @@ class RewardService
                     "upline2_5pct_{$triggerUserId}"
                 );
             }
+
+            // Update active user counts for inviter and all upline users
+            // This is the user's first deposit, so they are now "activated"
+            // We need to update direct_active_count and team_active_count for all upline users
+            try {
+                // Update stats for direct inviter (and all their upline)
+                $this->referralService->recalcTeamStats($directInviterId);
+            } catch (\Exception $e) {
+                // Log error but don't fail the reward process
+                \Log::error('Failed to update active user counts on first deposit', [
+                    'trigger_user_id' => $triggerUserId,
+                    'direct_inviter_id' => $directInviterId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         });
     }
 
