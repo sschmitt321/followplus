@@ -343,7 +343,7 @@ class FollowService
 
         $user = User::findOrFail($userId);
 
-        // newbie_bonus: Check if user is newbie (registered within 7 days)
+        // newbie_bonus: Check if user is newbie (eligible days: 2-6)
         if ($windowType === 'newbie_bonus') {
             return $this->isNewbie($user);
         }
@@ -357,13 +357,14 @@ class FollowService
     }
 
     /**
-     * Check if user is newbie (registered within 5 days).
-     * Eligible days: 1-5 (registration day is day 1).
+     * Check if user is newbie (eligible for newbie bonus).
+     * Eligible days: 2-6 (starting from the day after registration).
+     * Registration day (day 1) is NOT eligible.
      */
     private function isNewbie(User $user): bool
     {
         if (!$user->first_joined_at) {
-            return true; // No join date, treat as newbie
+            return false; // No join date, cannot determine eligibility
         }
 
         // Use startOfDay() to ensure date-based calculation, not time-based
@@ -371,11 +372,11 @@ class FollowService
         $today = TimeHelper::now()->startOfDay();
         
         // Calculate days since join (date-based, not time-based)
-        // diffInDays with startOfDay: 0=day1, 1=day2, 2=day3, 3=day4, 4=day5, 5=day6
-        // Eligible days: 1-5 means daysSinceJoin >= 0 && daysSinceJoin <= 4
+        // diffInDays with startOfDay: 0=day1, 1=day2, 2=day3, 3=day4, 4=day5, 5=day6, 6=day7
+        // Eligible days: 2-6 means daysSinceJoin >= 1 && daysSinceJoin <= 5
         $daysSinceJoin = $joinDate->diffInDays($today);
         
-        return $daysSinceJoin >= 0 && $daysSinceJoin <= 4;
+        return $daysSinceJoin >= 1 && $daysSinceJoin <= 5;
     }
 
     /**
@@ -531,8 +532,12 @@ class FollowService
             $today = TimeHelper::now()->startOfDay();
             $daysSinceJoin = $joinDate->diffInDays($today);
             
-            if ($daysSinceJoin > 4) {
-                return "User registered {$daysSinceJoin} days ago, eligible days are 1-5";
+            if ($daysSinceJoin < 1) {
+                return "User registered today (day 1), eligible days are 2-6";
+            }
+            
+            if ($daysSinceJoin > 5) {
+                return "User registered {$daysSinceJoin} days ago, eligible days are 2-6";
             }
             
             return 'Unknown reason (newbie_bonus window)';

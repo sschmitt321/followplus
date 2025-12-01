@@ -5,6 +5,7 @@ namespace App\Services\Referral;
 use App\Models\RefStat;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ReferralService
 {
@@ -65,12 +66,19 @@ class ReferralService
 
     /**
      * Recalculate team statistics for a user and all upline users.
+     * 
+     * Note: This method recalculates stats for upline users (users in ref_path),
+     * but NOT for the user itself. To recalculate a specific user's stats,
+     * use recalcSingleUserStats() directly or call recalcTeamStats() with one of their downlines.
      */
     public function recalcTeamStats(int $userId): void
     {
         $user = User::findOrFail($userId);
         
-        // Get all users in the upline path
+        // First, recalculate the user's own stats
+        $this->recalcSingleUserStats($userId);
+        
+        // Then recalculate all users in the upline path
         $pathIds = $this->extractPathIds($user->ref_path);
         
         foreach ($pathIds as $pathUserId) {
@@ -122,7 +130,7 @@ class ReferralService
                         $rewardService->grantAmbassadorOneOff($userId, $newLevel);
                     } catch (\Exception $e) {
                         // Log error but don't fail the recalculation
-                        \Log::error("Failed to grant ambassador reward on level up", [
+                        Log::error("Failed to grant ambassador reward on level up", [
                             'user_id' => $userId,
                             'old_level' => $oldLevel,
                             'new_level' => $newLevel,
@@ -140,9 +148,18 @@ class ReferralService
     private function countSubtreeSize(int $userId): int
     {
         $user = User::findOrFail($userId);
-        $pathPrefix = $user->ref_path . '/' . $userId;
+        
+        // Build path prefix: ref_path + '/' + userId
+        // Handle root path (/) correctly to avoid double slashes
+        $basePath = rtrim($user->ref_path, '/');
+        if ($basePath === '') {
+            $pathPrefix = '/' . $userId;
+        } else {
+            $pathPrefix = $basePath . '/' . $userId;
+        }
         
         // Count all users whose ref_path starts with this path (excluding self)
+        // This includes direct children (ref_path = '/3') and all descendants (ref_path LIKE '/3/%')
         return User::where('ref_path', 'like', $pathPrefix . '%')
             ->where('id', '!=', $userId)
             ->count();
