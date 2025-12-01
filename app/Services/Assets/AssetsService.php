@@ -24,6 +24,42 @@ class AssetsService
     }
 
     /**
+     * Get contract account balance for user (for follow trading).
+     */
+    public function getContractBalance(int $userId, string $currency = 'USDT'): Decimal
+    {
+        $account = Account::where([
+            'user_id' => $userId,
+            'type' => 'contract',
+            'currency' => $currency,
+        ])->first();
+
+        if (!$account) {
+            return Decimal::zero();
+        }
+
+        return $account->available->add($account->frozen);
+    }
+
+    /**
+     * Get spot account balance for user (for deposit/withdraw).
+     */
+    public function getSpotBalance(int $userId, string $currency = 'USDT'): Decimal
+    {
+        $account = Account::where([
+            'user_id' => $userId,
+            'type' => 'spot',
+            'currency' => $currency,
+        ])->first();
+
+        if (!$account) {
+            return Decimal::zero();
+        }
+
+        return $account->available->add($account->frozen);
+    }
+
+    /**
      * Update user assets summary.
      * 
      * Handles deadlocks with retry mechanism.

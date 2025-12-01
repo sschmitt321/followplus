@@ -192,6 +192,9 @@ class FollowController extends Controller
             // Handle specific error messages
             if (str_contains($errorMessage, 'already been used')) {
                 $userMessage = '该跟单码已被使用，每个跟单码只能使用一次';
+            } elseif (str_contains($errorMessage, '合约账户余额不足')) {
+                // Keep the original message as it already guides user to transfer from spot to contract
+                $userMessage = $errorMessage;
             } elseif (str_contains($errorMessage, 'Insufficient balance')) {
                 $userMessage = '账户余额不足';
             } elseif (str_contains($errorMessage, 'Quota exhausted')) {

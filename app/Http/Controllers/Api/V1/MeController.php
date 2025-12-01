@@ -54,10 +54,14 @@ class MeController extends Controller
 
             $accountBalances[$currency] = [
                 'spot' => [
+                    'name' => '资金账户',
+                    'type' => 'spot',
                     'available' => $spotAccount ? $spotAccount->available->toFixed(6) : '0.000000',
                     'frozen' => $spotAccount ? $spotAccount->frozen->toFixed(6) : '0.000000',
                 ],
                 'contract' => [
+                    'name' => '合约账户',
+                    'type' => 'contract',
                     'available' => $contractAccount ? $contractAccount->available->toFixed(6) : '0.000000',
                     'frozen' => $contractAccount ? $contractAccount->frozen->toFixed(6) : '0.000000',
                 ],

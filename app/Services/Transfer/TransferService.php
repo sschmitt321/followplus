@@ -41,6 +41,9 @@ class TransferService
             if (!$sourceAccount) {
                 // Check if user has the opposite account type to provide better error message
                 $oppositeType = $fromType === 'spot' ? 'contract' : 'spot';
+                $fromTypeName = $fromType === 'spot' ? '资金账户' : '合约账户';
+                $oppositeTypeName = $oppositeType === 'spot' ? '资金账户' : '合约账户';
+                
                 $oppositeAccount = \App\Models\Account::where([
                     'user_id' => $userId,
                     'type' => $oppositeType,
@@ -48,16 +51,17 @@ class TransferService
                 ])->first();
                 
                 if ($oppositeAccount && $oppositeAccount->available->greaterThan(Decimal::zero())) {
-                    throw new \Exception("您没有 {$fromType} 账户，请先从 {$oppositeType} 账户转到 {$fromType} 账户");
+                    throw new \Exception("您没有 {$fromTypeName}，请先从 {$oppositeTypeName} 转到 {$fromTypeName}");
                 } else {
-                    throw new \Exception("{$fromType} 账户不存在，请先充值");
+                    throw new \Exception("{$fromTypeName}不存在，请先充值");
                 }
             }
 
             if ($sourceAccount->available->lessThan($amount)) {
                 $availableBalance = $sourceAccount->available->toFixed(6);
                 $requiredAmount = $amount->toFixed(6);
-                throw new \Exception("账户余额不足。{$fromType} 账户可用余额: {$availableBalance} {$currency}，需要: {$requiredAmount} {$currency}");
+                $fromTypeName = $fromType === 'spot' ? '资金账户' : '合约账户';
+                throw new \Exception("账户余额不足。{$fromTypeName}可用余额: {$availableBalance} {$currency}，需要: {$requiredAmount} {$currency}");
             }
 
             // Debit from source

@@ -85,11 +85,20 @@ class WithdrawService
                 throw new \Exception('Invalid withdrawal password');
             }
             
-            // Check balance
-            $totalBalance = $this->assetsService->getTotalBalance($userId);
+            // Check if user has unsettled follow orders
+            $unsettledOrders = \App\Models\FollowOrder::where('user_id', $userId)
+                ->where('status', 'placed')
+                ->exists();
             
-            if ($amount->greaterThan($totalBalance)) {
-                throw new \Exception('Insufficient balance');
+            if ($unsettledOrders) {
+                throw new \Exception('您有未结算的跟单订单，无法提现。请等待订单结算后再试');
+            }
+            
+            // Check balance (only from spot account for withdrawal)
+            $spotBalance = $this->assetsService->getSpotBalance($userId, $currency);
+            
+            if ($amount->greaterThan($spotBalance)) {
+                throw new \Exception('币币账户余额不足');
             }
 
             $isNewbie = $this->isNewbie($user);

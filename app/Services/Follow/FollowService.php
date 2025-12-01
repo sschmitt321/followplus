@@ -71,10 +71,26 @@ class FollowService
                 throw new \Exception('Symbol mismatch');
             }
 
-            // Check user balance first (required for all window types)
+            // Check contract account balance (required for follow trading)
+            $contractBalance = $this->assetsService->getContractBalance($userId, 'USDT');
+            $spotBalance = $this->assetsService->getSpotBalance($userId, 'USDT');
+            
+            // Calculate required amount (1% of total assets)
             $totalBalance = $this->assetsService->getTotalBalance($userId);
             if ($totalBalance->isZero()) {
                 throw new \Exception('Insufficient balance: Account balance is zero');
+            }
+            
+            $amountBase = $totalBalance->percentage(1, 6);
+            
+            // Check if contract account has sufficient balance
+            if ($contractBalance->lessThan($amountBase)) {
+                // Check if user has balance in spot account
+                if ($spotBalance->greaterThan(Decimal::zero())) {
+                    throw new \Exception('合约账户余额不足，请先从资金账户划转到合约账户');
+                } else {
+                    throw new \Exception('合约账户余额不足，请先充值');
+                }
             }
 
             // Check user permission for window type
@@ -113,14 +129,6 @@ class FollowService
                 throw new \Exception('Quota exhausted');
             }
 
-            // Calculate amount_base (1% of total assets)
-            // Note: totalBalance was already checked above, reuse it
-            $amountBase = $totalBalance->percentage(1, 6);
-
-            if ($amountBase->isZero()) {
-                throw new \Exception('Insufficient balance');
-            }
-
             // Validate amount_input if provided
             // If amount_input doesn't match 1% of total assets, use calculated amount_base instead
             if ($amountInput) {
@@ -135,7 +143,7 @@ class FollowService
             // Consume quota
             $this->quotaService->consumeQuota($userId, $date, $window->window_type);
 
-            // Create order
+            // Create order first (to get order ID)
             $order = FollowOrder::create([
                 'user_id' => $userId,
                 'follow_window_id' => $followWindowId,
@@ -145,6 +153,16 @@ class FollowService
                 'status' => 'placed',
                 'invite_token' => $inviteToken,
             ]);
+
+            // Freeze balance from contract account (after order creation to link with order ID)
+            $this->ledgerService->freeze(
+                $userId,
+                'contract',
+                'USDT',
+                $amountBase,
+                'follow_order',
+                $order->id
+            );
 
             return $order;
         });
@@ -192,10 +210,18 @@ class FollowService
                         'settled_at' => TimeHelper::now()->utc(),
                     ]);
 
-                    // Credit profit to user's account
+                    // Unfreeze the original amount from contract account
+                    $this->ledgerService->unfreeze(
+                        $order->user_id,
+                        'contract',
+                        'USDT',
+                        $order->amount_base
+                    );
+                    
+                    // Credit profit to contract account (not spot account)
                     $this->ledgerService->credit(
                         $order->user_id,
-                        'spot',
+                        'contract',
                         'USDT', // Default currency
                         $profit,
                         'follow_settle',
@@ -341,10 +367,10 @@ class FollowService
 
         $daysSinceJoin = $user->first_joined_at->setTimezone('Asia/Shanghai')->diffInDays(TimeHelper::now());
         
-        // Newbie bonus windows: days 2-6 are eligible
+        // Newbie bonus windows: days 1-6 are eligible (including registration day)
         // diffInDays: 0=day1, 1=day2, 2=day3, ..., 5=day6, 6=day7
-        // So days 2-6 means: daysSinceJoin >= 1 && daysSinceJoin <= 5
-        return $daysSinceJoin >= 1 && $daysSinceJoin <= 5;
+        // So days 1-6 means: daysSinceJoin >= 0 && daysSinceJoin <= 5
+        return $daysSinceJoin >= 0 && $daysSinceJoin <= 5;
     }
 
     /**
@@ -498,10 +524,8 @@ class FollowService
             
             $daysSinceJoin = $user->first_joined_at->setTimezone('Asia/Shanghai')->diffInDays(TimeHelper::now());
             
-            if ($daysSinceJoin < 1) {
-                return "User registered today (day 1), eligible days are 2-6";
-            } elseif ($daysSinceJoin > 5) {
-                return "User registered {$daysSinceJoin} days ago, eligible days are 2-6";
+            if ($daysSinceJoin > 5) {
+                return "User registered {$daysSinceJoin} days ago, eligible days are 1-6";
             }
             
             return 'Unknown reason (newbie_bonus window)';

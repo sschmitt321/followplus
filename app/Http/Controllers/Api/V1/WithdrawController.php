@@ -153,6 +153,15 @@ class WithdrawController extends Controller
                 ],
             ], 200);
         } catch (\Exception $e) {
+            // Log error for debugging
+            \Log::warning('Withdrawal failed', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+                'error_class' => get_class($e),
+            ]);
+
+            // Return user-friendly error message
+            // The error messages from WithdrawService are already user-friendly
             return response()->json([
                 'error' => $e->getMessage(),
             ], 400);

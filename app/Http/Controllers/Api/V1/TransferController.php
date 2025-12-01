@@ -80,11 +80,12 @@ class TransferController extends Controller
             $errorMessage = $e->getMessage();
             
             // Translate common error messages to Chinese
-            if (str_contains($errorMessage, 'does not exist') || str_contains($errorMessage, '账户不存在')) {
-                $errorMessage = '源账户不存在，请先充值或检查账户类型';
+            if (str_contains($errorMessage, 'does not exist') || str_contains($errorMessage, '不存在')) {
+                // Error message already contains Chinese account names (资金账户/合约账户)
+                // Keep the original message as it's already user-friendly
             } elseif (str_contains($errorMessage, '账户余额不足')) {
                 // Keep the detailed error message that includes balance info
-                // Error message already contains balance details in Chinese
+                // Error message already contains balance details in Chinese with account names
             } elseif (str_contains($errorMessage, 'Insufficient balance')) {
                 $errorMessage = '账户余额不足';
             } elseif (str_contains($errorMessage, 'same account type') || str_contains($errorMessage, '不能在同一账户类型间转账')) {
