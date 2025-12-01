@@ -357,7 +357,8 @@ class FollowService
     }
 
     /**
-     * Check if user is newbie (registered within 7 days).
+     * Check if user is newbie (registered within 5 days).
+     * Eligible days: 1-5 (registration day is day 1).
      */
     private function isNewbie(User $user): bool
     {
@@ -365,12 +366,16 @@ class FollowService
             return true; // No join date, treat as newbie
         }
 
-        $daysSinceJoin = $user->first_joined_at->setTimezone('Asia/Shanghai')->diffInDays(TimeHelper::now());
+        // Use startOfDay() to ensure date-based calculation, not time-based
+        $joinDate = $user->first_joined_at->setTimezone('Asia/Shanghai')->startOfDay();
+        $today = TimeHelper::now()->startOfDay();
         
-        // Newbie bonus windows: days 1-6 are eligible (including registration day)
-        // diffInDays: 0=day1, 1=day2, 2=day3, ..., 5=day6, 6=day7
-        // So days 1-6 means: daysSinceJoin >= 0 && daysSinceJoin <= 5
-        return $daysSinceJoin >= 0 && $daysSinceJoin <= 5;
+        // Calculate days since join (date-based, not time-based)
+        // diffInDays with startOfDay: 0=day1, 1=day2, 2=day3, 3=day4, 4=day5, 5=day6
+        // Eligible days: 1-5 means daysSinceJoin >= 0 && daysSinceJoin <= 4
+        $daysSinceJoin = $joinDate->diffInDays($today);
+        
+        return $daysSinceJoin >= 0 && $daysSinceJoin <= 4;
     }
 
     /**
@@ -522,10 +527,12 @@ class FollowService
                 return 'User has no join date';
             }
             
-            $daysSinceJoin = $user->first_joined_at->setTimezone('Asia/Shanghai')->diffInDays(TimeHelper::now());
+            $joinDate = $user->first_joined_at->setTimezone('Asia/Shanghai')->startOfDay();
+            $today = TimeHelper::now()->startOfDay();
+            $daysSinceJoin = $joinDate->diffInDays($today);
             
-            if ($daysSinceJoin > 5) {
-                return "User registered {$daysSinceJoin} days ago, eligible days are 1-6";
+            if ($daysSinceJoin > 4) {
+                return "User registered {$daysSinceJoin} days ago, eligible days are 1-5";
             }
             
             return 'Unknown reason (newbie_bonus window)';

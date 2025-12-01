@@ -9,7 +9,7 @@
 | 窗口类型 | 中文名称 | 参与条件 | 配额类型 | 典型时间 |
 |---------|---------|---------|---------|---------|
 | `fixed_daily` | 固定每日窗口 | 所有用户（有余额即可） | 基础配额 | 13:00, 20:00 |
-| `newbie_bonus` | 新人加餐窗 | 注册后第2-6天的用户 | 加餐配额 | 12:00, 14:00, 19:00, 21:00 |
+| `newbie_bonus` | 新人加餐窗 | 注册后第1-5天的用户 | 加餐配额 | 12:00, 14:00, 19:00, 21:00 |
 | `inviter_bonus` | 邀请人加餐窗 | 邀请比例 ≥ 30% 的用户 | 加餐配额 | 12:00, 14:00, 19:00, 21:00 |
 
 ---
@@ -47,27 +47,30 @@ if ($windowType === 'fixed_daily') {
 ## 2. newbie_bonus（新人加餐窗）
 
 ### 参与条件
-- ✅ **注册后第2-6天的用户**可以参与
-- ❌ 注册当天（第1天）不能参与
-- ❌ 注册7天及以后不能参与
+- ✅ **注册后第1-5天的用户**可以参与
+- ✅ 注册当天（第1天）可以参与
+- ❌ 注册6天及以后不能参与
 - ✅ 必须账户有余额
 
 ### 时间计算逻辑
 ```php
-$daysSinceJoin = 用户注册日期到今天的差值（天数）
+$joinDate = $user->first_joined_at->setTimezone('Asia/Shanghai')->startOfDay();
+$today = TimeHelper::now()->startOfDay();
+$daysSinceJoin = $joinDate->diffInDays($today);
 
-// 参与条件：daysSinceJoin >= 1 && daysSinceJoin <= 5
-// 即：注册后第2天、第3天、第4天、第5天、第6天可以参与
+// 参与条件：daysSinceJoin >= 0 && daysSinceJoin <= 4
+// diffInDays: 0=day1, 1=day2, 2=day3, 3=day4, 4=day5
+// 即：注册后第1天、第2天、第3天、第4天、第5天可以参与
 ```
 
 **示例**：
 - 用户 2025-01-15 注册
+- 2025-01-15（第1天）✅ 可以参与
 - 2025-01-16（第2天）✅ 可以参与
 - 2025-01-17（第3天）✅ 可以参与
 - 2025-01-18（第4天）✅ 可以参与
 - 2025-01-19（第5天）✅ 可以参与
-- 2025-01-20（第6天）✅ 可以参与
-- 2025-01-21（第7天）❌ 不能参与
+- 2025-01-20（第6天）❌ 不能参与
 
 ### 配额逻辑
 - **配额类型**：加餐配额（Extra Quota）
@@ -83,8 +86,10 @@ $daysSinceJoin = 用户注册日期到今天的差值（天数）
 ```php
 // 检查参与权限
 if ($windowType === 'newbie_bonus') {
-    $daysSinceJoin = $user->first_joined_at->diffInDays(now());
-    return $daysSinceJoin >= 1 && $daysSinceJoin <= 5; // 第2-6天
+    $joinDate = $user->first_joined_at->setTimezone('Asia/Shanghai')->startOfDay();
+    $today = TimeHelper::now()->startOfDay();
+    $daysSinceJoin = $joinDate->diffInDays($today);
+    return $daysSinceJoin >= 0 && $daysSinceJoin <= 4; // 第1-5天
 }
 
 // 配额检查
@@ -176,7 +181,7 @@ if ($windowType === 'inviter_bonus') {
 用户可以通过以下方式获得额外配额：
 
 1. **新人奖励**（`newbie_days2to6`）
-   - 注册后第2-6天的用户
+   - 注册后第1-5天的用户
    - 每日额外配额：4次（默认）
 
 2. **邀请人奖励**（`inviter_ratio30pct`）
@@ -211,7 +216,7 @@ if ($windowType === 'inviter_bonus') {
 2. **新人加餐窗（newbie_bonus）**
    - 适合：为新用户提供额外机会
    - 时间建议：12:00, 14:00, 19:00, 21:00
-   - 注意：只有注册后第2-6天的用户可以参与
+   - 注意：只有注册后第1-5天的用户可以参与
 
 3. **邀请人加餐窗（inviter_bonus）**
    - 适合：激励活跃的邀请人
@@ -228,7 +233,7 @@ if ($windowType === 'inviter_bonus') {
 - 使用加餐配额参与 `newbie_bonus` 或 `inviter_bonus` 窗口（最多4次 + 额外配额）
 
 ### Q2: 新用户第1天可以参与加餐窗吗？
-**A:** 不可以。`newbie_bonus` 窗口只允许注册后第2-6天的用户参与。
+**A:** 不可以。`newbie_bonus` 窗口只允许注册后第1-5天的用户参与。
 
 ### Q3: 邀请比例如何计算？
 **A:** 邀请比例 = 直接邀请数 / 团队总数。例如：直接邀请10人，团队总数30人，比例 = 10/30 = 33.3%。
