@@ -253,10 +253,114 @@ class TronNodeClient
 
     /**
      * Get TRX balance.
+     * 
+     * Uses /wallet/getaccount endpoint which is more reliable than /v1/accounts/{address}
      */
     public function getTrxBalance(string $address): float
     {
         try {
+            // Convert address to hex format for the API
+            $addressHex = $this->addressToHex($address);
+            
+            // Use /wallet/getaccount endpoint (more reliable)
+            $url = "{$this->baseUrl}/wallet/getaccount";
+            
+            $headers = [];
+            if ($this->apiKey) {
+                $headers['TRON-PRO-API-KEY'] = $this->apiKey;
+            }
+
+            $params = [
+                'address' => $addressHex,  // Use hex format
+                'visible' => false,  // Return hex format
+            ];
+
+            Log::info('TronNodeClient: Getting TRX balance', [
+                'address' => $address,
+                'address_hex' => $addressHex,
+                'url' => $url,
+                'base_url' => $this->baseUrl,
+            ]);
+
+            $response = Http::timeout(30)
+                ->withoutVerifying()  // Disable SSL verification if needed
+                ->withHeaders($headers)
+                ->post($url, $params);
+
+            if (!$response->successful()) {
+                $errorDetails = [
+                    'address' => $address,
+                    'address_hex' => $addressHex,
+                    'status' => $response->status(),
+                    'response' => $response->body(),
+                    'url' => $url,
+                    'base_url' => $this->baseUrl,
+                ];
+                
+                Log::error('TronNodeClient: Failed to get TRX balance', $errorDetails);
+                
+                // Try alternative endpoint if main one fails
+                return $this->getTrxBalanceAlternative($address);
+            }
+
+            $data = $response->json();
+            
+            Log::info('TronNodeClient: API response received', [
+                'address' => $address,
+                'response_keys' => array_keys($data),
+                'has_balance' => isset($data['balance']),
+                'has_error' => isset($data['Error']),
+            ]);
+            
+            // Check if account exists
+            if (isset($data['Error'])) {
+                Log::warning('TronNodeClient: Account query error', [
+                    'address' => $address,
+                    'error' => $data['Error'],
+                    'full_response' => $data,
+                ]);
+                return 0.0;
+            }
+            
+            // Get balance from response
+            // The balance is in sun (1 TRX = 1,000,000 sun)
+            $balance = $data['balance'] ?? 0;
+            
+            // Convert from sun to TRX
+            $trxBalance = $balance / 1000000;
+            
+            Log::info('TronNodeClient: TRX balance retrieved', [
+                'address' => $address,
+                'balance_sun' => $balance,
+                'balance_trx' => $trxBalance,
+                'response_sample' => json_encode(array_slice($data, 0, 3, true)),
+            ]);
+            
+            return $trxBalance;
+        } catch (\Exception $e) {
+            Log::error('TronNodeClient: Exception getting TRX balance', [
+                'address' => $address,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            // Try alternative method on exception
+            return $this->getTrxBalanceAlternative($address);
+        }
+    }
+    
+    /**
+     * Alternative method to get TRX balance using /v1/accounts endpoint.
+     * Used as fallback if /wallet/getaccount fails.
+     */
+    private function getTrxBalanceAlternative(string $address): float
+    {
+        try {
+            Log::info('TronNodeClient: Trying alternative method to get TRX balance', [
+                'address' => $address,
+            ]);
+            
+            // Try using /v1/accounts endpoint
             $url = "{$this->baseUrl}/v1/accounts/{$address}";
             
             $headers = [];
@@ -265,20 +369,47 @@ class TronNodeClient
             }
 
             $response = Http::timeout(30)
+                ->withoutVerifying()
                 ->withHeaders($headers)
                 ->get($url);
 
             if (!$response->successful()) {
+                Log::error('TronNodeClient: Alternative method also failed', [
+                    'address' => $address,
+                    'status' => $response->status(),
+                    'response' => $response->body(),
+                ]);
                 return 0.0;
             }
 
             $data = $response->json();
-            $balance = $data['balance'] ?? 0;
             
-            // Convert from sun to TRX (1 TRX = 1,000,000 sun)
-            return $balance / 1000000;
+            // Handle different response formats
+            if (isset($data['data']) && is_array($data['data']) && count($data['data']) > 0) {
+                // TronGrid v1 API format: {"data": [{"balance": ...}]}
+                $balance = $data['data'][0]['balance'] ?? 0;
+            } elseif (isset($data['balance'])) {
+                // Direct balance field
+                $balance = $data['balance'];
+            } else {
+                Log::warning('TronNodeClient: Unexpected response format', [
+                    'address' => $address,
+                    'response' => $data,
+                ]);
+                return 0.0;
+            }
+            
+            // Convert from sun to TRX
+            $trxBalance = $balance / 1000000;
+            
+            Log::info('TronNodeClient: Alternative method succeeded', [
+                'address' => $address,
+                'balance_trx' => $trxBalance,
+            ]);
+            
+            return $trxBalance;
         } catch (\Exception $e) {
-            Log::error('TronNodeClient: Exception getting TRX balance', [
+            Log::error('TronNodeClient: Alternative method exception', [
                 'address' => $address,
                 'error' => $e->getMessage(),
             ]);

@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\Tron\TronSweepService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
 
 class TronSweepTask extends Command
 {
@@ -26,13 +27,58 @@ class TronSweepTask extends Command
      */
     public function handle(TronSweepService $sweepService): int
     {
-        $this->info('Starting sweep operation...');
+        $this->info('═══════════════════════════════════════════════════════════');
+        $this->info('  TRON USDT Sweep Operation');
+        $this->info('═══════════════════════════════════════════════════════════');
+        $this->newLine();
+        
+        Log::info('TronSweepTask: Command started');
 
-        $swept = $sweepService->sweepAll();
+        try {
+            // Create output callback for console display
+            $outputCallback = function (string $message, string $type = 'info') {
+                switch ($type) {
+                    case 'error':
+                        $this->error($message);
+                        break;
+                    case 'comment':
+                        $this->comment($message);
+                        break;
+                    case 'warn':
+                        $this->warn($message);
+                        break;
+                    case 'info':
+                    default:
+                        $this->info($message);
+                        break;
+                }
+            };
+            
+            $swept = $sweepService->sweepAll($outputCallback);
+            
+            $this->newLine();
+            $this->info('═══════════════════════════════════════════════════════════');
+            $this->info("✓ Sweep operation completed: {$swept} address(es) swept");
+            $this->info('═══════════════════════════════════════════════════════════');
+            
+            Log::info('TronSweepTask: Command completed', [
+                'swept_count' => $swept,
+            ]);
 
-        $this->info("Swept {$swept} address(es).");
+            return Command::SUCCESS;
+        } catch (\Exception $e) {
+            $this->newLine();
+            $this->error('═══════════════════════════════════════════════════════════');
+            $this->error('✗ Sweep operation failed: ' . $e->getMessage());
+            $this->error('═══════════════════════════════════════════════════════════');
+            
+            Log::error('TronSweepTask: Command failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
 
-        return Command::SUCCESS;
+            return Command::FAILURE;
+        }
     }
 }
 

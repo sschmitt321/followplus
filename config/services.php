@@ -43,6 +43,7 @@ return [
         'hot_wallet_address' => env('TRON_HOT_WALLET_ADDRESS', ''),
         'hot_wallet_private_key' => env('TRON_HOT_WALLET_PRIVATE_KEY', ''),
         'gas_bank_private_key' => env('TRON_GAS_BANK_PRIVATE_KEY', ''),
+        'gas_bank_trx_amount' => env('TRON_GAS_BANK_TRX_AMOUNT', 6.0), // Amount of TRX to send from gas bank (should cover gas fee ~5.x TRX per transaction)
         'required_confirmations' => env('TRON_REQUIRED_CONFIRMATIONS', 20),
         'min_sweep_amount' => env('TRON_MIN_SWEEP_AMOUNT', 50.0),
         'min_trx_balance' => env('TRON_MIN_TRX_BALANCE', 1.0),

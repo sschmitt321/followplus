@@ -94,17 +94,30 @@ class TronUsdtContract
         try {
             $transactionService = app(TronTransactionService::class);
             
-            return $transactionService->transferTrc20(
+            $txid = $transactionService->transferTrc20(
                 $privateKey,
                 $toAddress,
                 $amount,
                 $this->contractAddress
             );
+            
+            if (!$txid) {
+                Log::error('TronUsdtContract: transferTrc20 returned null', [
+                    'to_address' => $toAddress,
+                    'amount' => $amount,
+                    'contract_address' => $this->contractAddress,
+                    'note' => 'TronTransactionService::transferTrc20() may not be fully implemented. Please check if Tron SDK is properly integrated.',
+                ]);
+            }
+            
+            return $txid;
         } catch (\Exception $e) {
-            Log::error('TronUsdtContract: Error transferring USDT', [
+            Log::error('TronUsdtContract: Exception transferring USDT', [
                 'to_address' => $toAddress,
                 'amount' => $amount,
+                'contract_address' => $this->contractAddress,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
             return null;
         }
