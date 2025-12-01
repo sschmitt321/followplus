@@ -523,7 +523,7 @@ php artisan tron:init-hd-wallet --seed="0x1234abcd..."
 # 生成新的主种子
 php artisan tron:init-hd-wallet
 
-# 强制重新初始化
+# 强制重新初始化（仅在非生产环境可用）
 php artisan tron:init-hd-wallet --force
 ```
 
@@ -531,6 +531,9 @@ php artisan tron:init-hd-wallet --force
 - 首次使用前必须初始化 HD 钱包
 - 主种子用于派生所有用户地址
 - 请妥善保管主种子，丢失将无法恢复地址
+- **安全限制**：`--force` 选项在生产环境（`APP_ENV=production`）下已被禁用，以防止意外覆盖已初始化的钱包
+  - 在生产环境使用 `--force` 会显示错误信息并拒绝执行
+  - 如需在生产环境重新初始化，请手动操作数据库或联系系统管理员
 
 ---
 

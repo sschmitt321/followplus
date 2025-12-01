@@ -25,15 +25,16 @@ class TronHdWalletService
      * Initialize HD wallet with master seed.
      * 
      * @param string $masterSeed Master seed (mnemonic phrase or hex seed)
+     * @param bool $force Force re-initialization even if already initialized
      * @return bool Success
      */
-    public function initialize(string $masterSeed): bool
+    public function initialize(string $masterSeed, bool $force = false): bool
     {
         try {
             $hdWallet = TronHdWallet::getInstance();
             
-            // Check if already initialized
-            if (!empty($hdWallet->encrypted_master_seed)) {
+            // Check if already initialized (unless force is true)
+            if (!empty($hdWallet->encrypted_master_seed) && !$force) {
                 throw new \Exception('HD wallet already initialized');
             }
 
@@ -46,12 +47,15 @@ class TronHdWalletService
                 'next_derivation_index' => 0,
             ]);
 
-            Log::info('TronHdWalletService: HD wallet initialized successfully');
+            Log::info('TronHdWalletService: HD wallet initialized successfully', [
+                'force' => $force,
+            ]);
 
             return true;
         } catch (\Exception $e) {
             Log::error('TronHdWalletService: Failed to initialize HD wallet', [
                 'error' => $e->getMessage(),
+                'force' => $force,
             ]);
             return false;
         }
@@ -331,7 +335,7 @@ class TronHdWalletService
         $key = config('services.tron.encryption_key', env('TRON_PK_ENC_KEY'));
         
         if (empty($key)) {
-            throw new \Exception('TRON_PK_ENC_KEY is not configured');
+            throw new \Exception('TRON_PK_ENC_KEY is not configured. Please set it in your .env file. You can generate one using: php -r "echo bin2hex(random_bytes(32));"');
         }
 
         // Ensure key is 32 bytes for AES-256
@@ -366,7 +370,7 @@ class TronHdWalletService
         $key = config('services.tron.encryption_key', env('TRON_PK_ENC_KEY'));
         
         if (empty($key)) {
-            throw new \Exception('TRON_PK_ENC_KEY is not configured');
+            throw new \Exception('TRON_PK_ENC_KEY is not configured. Please set it in your .env file. You can generate one using: php -r "echo bin2hex(random_bytes(32));"');
         }
 
         // Ensure key is 32 bytes for AES-256

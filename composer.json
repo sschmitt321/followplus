@@ -6,7 +6,7 @@
     "keywords": ["laravel", "framework"],
     "license": "MIT",
     "require": {
-        "php": "^8.2",
+        "php": "^8.3",
         "brick/math": "^0.14.0",
         "furqansiddiqui/bip32-keypair-php": "^0.3.7",
         "furqansiddiqui/bip39-mnemonic-php": "^0.1.7",
@@ -18,6 +18,8 @@
         "php-open-source-saver/jwt-auth": "^2.8",
         "simplito/elliptic-php": "^1.0",
         "stephenhill/base58": "^2.1",
+        "symfony/event-dispatcher": "^7.0",
+        "symfony/string": "^7.0",
         "takpesar/tron": "^1.0"
     },
     "require-dev": {

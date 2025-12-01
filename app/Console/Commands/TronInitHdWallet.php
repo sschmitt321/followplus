@@ -28,9 +28,28 @@ class TronInitHdWallet extends Command
      */
     public function handle(TronHdWalletService $hdWalletService): int
     {
+        // Prevent force re-initialization in production environment
+        if ($this->option('force') && app()->environment('production')) {
+            $this->error('❌ Force re-initialization is disabled in production environment for security reasons.');
+            $this->newLine();
+            $this->warn('⚠️  Re-initializing HD wallet in production will:');
+            $this->line('   - Overwrite the existing master seed');
+            $this->line('   - Make all previously derived addresses inaccessible');
+            $this->line('   - Potentially cause loss of funds');
+            $this->newLine();
+            $this->info('If you need to re-initialize, please:');
+            $this->line('   1. Ensure you have a backup of the current master seed');
+            $this->line('   2. Manually update the database if necessary');
+            $this->line('   3. Contact system administrator for assistance');
+            return Command::FAILURE;
+        }
+
         // Check if already initialized
         if ($hdWalletService->isInitialized() && !$this->option('force')) {
             $this->error('HD wallet is already initialized. Use --force to re-initialize.');
+            if (app()->environment('production')) {
+                $this->warn('Note: --force is disabled in production environment.');
+            }
             return Command::FAILURE;
         }
 
@@ -60,7 +79,8 @@ class TronInitHdWallet extends Command
         // Initialize HD wallet
         $this->info('Initializing HD wallet...');
         
-        if ($hdWalletService->initialize($masterSeed)) {
+        $force = $this->option('force');
+        if ($hdWalletService->initialize($masterSeed, $force)) {
             $this->info('✅ HD wallet initialized successfully!');
             $this->newLine();
             $this->info('Next steps:');
