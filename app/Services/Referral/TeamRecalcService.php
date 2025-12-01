@@ -52,15 +52,22 @@ class TeamRecalcService
 
     /**
      * Get dividend rate for ambassador level.
+     * 
+     * Trading volume dividend rates:
+     * Level 1: 0.5%
+     * Level 2: 1.0%
+     * Level 3: 1.5%
+     * Level 4: 2.0%
+     * Level 5 (Company Ambassador): 2.5%
      */
     private function getDividendRateForLevel(string $level): float
     {
         return match ($level) {
-            'L1' => 0.0001, // 0.01%
-            'L2' => 0.0002, // 0.02%
-            'L3' => 0.0005, // 0.05%
-            'L4' => 0.0010, // 0.1%
-            'L5' => 0.0020, // 0.2%
+            'L1' => 0.0050, // 0.5%
+            'L2' => 0.0100, // 1.0%
+            'L3' => 0.0150, // 1.5%
+            'L4' => 0.0200, // 2.0%
+            'L5' => 0.0250, // 2.5%
             default => 0.0,
         };
     }

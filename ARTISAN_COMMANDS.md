@@ -12,6 +12,8 @@
 - [跟单系统](#跟单系统)
 - [市场数据](#市场数据)
 - [奖励系统](#奖励系统)
+- [邀请系统](#邀请系统)
+  - [激活规则](#激活规则)
 - [Tron 钱包管理](#tron-钱包管理)
 - [Tron 充值管理](#tron-充值管理)
 - [Tron 调试工具](#tron-调试工具)
@@ -457,6 +459,232 @@ php artisan rewards:dispatch-dividends 2025-11-20
 
 ---
 
+## 邀请系统
+
+### 激活规则
+
+**用户激活条件**：
+- 用户累计充值金额 >= **1000 USDT** 才算激活
+- 如果首次充值不足1000U，需要累计达到1000U才算激活
+- 管理员可以使用 `referral:activate-user` 命令手动激活用户
+
+**激活影响**：
+- 只有激活的用户才会被计入 `direct_active_count` 和 `team_active_count`
+- 激活状态会影响邀请者的大使等级计算
+- 用户激活后，会自动更新邀请者及其所有上级的统计数据
+
+---
+
+### `referral:bind-inviter`
+
+**功能**：手动关联用户的邀请关系（将用户A设置为用户B的邀请者）
+
+**用法**：
+```bash
+php artisan referral:bind-inviter {user} {inviter} [--force] [--update-subtree]
+```
+
+**参数**：
+- `user`：被邀请者（用户ID、邮箱或手机号）（必填）
+- `inviter`：邀请者（用户ID、邮箱、手机号或邀请码）（必填）
+
+**选项**：
+- `--force`：强制替换已有邀请关系（跳过确认提示）
+- `--update-subtree`：更新被邀请者所有下级的 `ref_path`
+
+**示例**：
+
+**1. 基本用法（交互式）**：
+```bash
+php artisan referral:bind-inviter user@example.com inviter@example.com
+```
+
+**2. 使用用户ID**：
+```bash
+php artisan referral:bind-inviter 123 456
+```
+
+**3. 使用邀请码**：
+```bash
+php artisan referral:bind-inviter user@example.com ABC123
+```
+
+**4. 强制替换已有邀请关系**：
+```bash
+php artisan referral:bind-inviter user@example.com inviter@example.com --force
+```
+
+**5. 更新下级邀请路径**：
+```bash
+php artisan referral:bind-inviter user@example.com inviter@example.com --update-subtree
+```
+
+**说明**：
+
+**功能特性**：
+- 支持通过用户ID、邮箱、手机号或邀请码查找用户
+- 自动检查循环引用（不能将用户设置为其下级的邀请者）
+- 自动计算新的邀请路径（`ref_path`）和邀请深度（`ref_depth`）
+- 自动更新邀请者的统计数据（`direct_count`、`team_count`、`ambassador_level`）
+- 如果被邀请者有下级，可以选择更新所有下级的邀请路径
+
+**安全检查**：
+- 不能将自己设置为自己的邀请者
+- 不能将用户设置为其下级的邀请者（防止循环引用）
+- 如果用户已有邀请者，需要确认才能替换
+
+**影响范围**：
+- 更新被邀请者的 `invited_by_user_id`、`ref_path`、`ref_depth`
+- 如果使用 `--update-subtree`，会更新所有下级的 `ref_path` 和 `ref_depth`
+- 自动重算旧邀请者和新邀请者的团队统计数据
+- 如果等级发生变化，会自动更新大使等级和分红比例
+
+**输出信息**：
+- 显示被邀请者和邀请者的详细信息
+- 显示将要执行的操作（旧值 vs 新值）
+- 如果有下级，会显示影响范围
+- 操作完成后显示更新后的邀请者统计信息
+
+**使用场景**：
+- 数据修复：修复错误的邀请关系
+- 数据迁移：批量导入用户时设置邀请关系
+- 管理操作：手动调整用户的邀请关系
+
+---
+
+### `referral:activate-user`
+
+**功能**：手动激活用户（将用户标记为已激活，即使累计充值未达到1000U）
+
+**用法**：
+```bash
+php artisan referral:activate-user {user} [--force]
+```
+
+**参数**：
+- `user`：用户ID、邮箱或手机号（必填）
+
+**选项**：
+- `--force`：跳过确认提示
+
+**示例**：
+
+**1. 手动激活用户（交互式）**：
+```bash
+php artisan referral:activate-user user@example.com
+```
+
+**2. 使用用户ID**：
+```bash
+php artisan referral:activate-user 123
+```
+
+**3. 跳过确认提示**：
+```bash
+php artisan referral:activate-user user@example.com --force
+```
+
+**说明**：
+
+**功能特性**：
+- 检查用户当前激活状态和累计充值金额
+- 如果累计充值未达到1000U，创建虚拟充值记录（不影响用户实际余额）
+- 自动更新邀请者的统计数据（`direct_active_count`、`team_active_count`）
+- 显示更新后的邀请者统计信息
+
+**激活规则**：
+- 正常激活：用户累计充值金额 >= 1000 USDT
+- 手动激活：管理员使用此命令手动激活用户，即使累计充值未达到1000U
+
+**注意事项**：
+- 虚拟充值记录只用于激活判断，不会影响用户的真实余额
+- 虚拟充值记录的 TXID 格式：`MANUAL_ACTIVATION_{timestamp}`
+- 如果用户已经激活，会提示无需重复操作
+- 操作完成后会自动更新邀请者的统计数据
+
+**使用场景**：
+- 特殊情况：用户因特殊原因需要手动激活
+- 数据修复：修复历史数据中的激活状态
+- 测试环境：在测试环境中快速激活用户
+
+---
+
+### `referral:recalc-stats`
+
+**功能**：重新计算邀请统计数据（`direct_count`、`team_count`、`ambassador_level`、`dividend_rate`）
+
+**用法**：
+```bash
+php artisan referral:recalc-stats [user_id] [--all] [--force]
+```
+
+**参数**：
+- `user_id`：用户ID（可选，如果指定则只重算该用户及其上级）
+
+**选项**：
+- `--all`：重算所有用户的统计数据
+- `--force`：跳过确认提示
+
+**示例**：
+
+**1. 重算指定用户及其上级**：
+```bash
+php artisan referral:recalc-stats 3
+```
+
+**2. 重算所有用户**：
+```bash
+php artisan referral:recalc-stats --all
+```
+
+**3. 跳过确认提示**：
+```bash
+php artisan referral:recalc-stats --all --force
+```
+
+**说明**：
+
+**功能特性**：
+- 重新计算用户的直接邀请人数（`direct_count`）
+- 重新计算用户的团队总人数（`team_count`）
+- 重新计算用户的团队激活人数（`direct_active_count`、`team_active_count`）
+- 重新计算用户的大使等级（`ambassador_level`）
+- 重新计算用户的分红比例（`dividend_rate`）
+- 如果指定用户ID，会同时重算该用户的所有上级
+
+**统计数据说明**：
+- `direct_count`：直接邀请的人数（一级下线）
+- `direct_active_count`：直接邀请的已激活人数（累计充值 >= 1000 USDT）
+- `team_count`：团队总人数（包括所有下级）
+- `team_active_count`：团队已激活总人数（累计充值 >= 1000 USDT）
+- `ambassador_level`：大使等级（L0, L1, L2, L3, L4, L5）
+- `dividend_rate`：分红比例（0-1之间的小数）
+
+**激活规则**：
+- 用户累计充值金额 >= 1000 USDT 才算激活
+- 如果首次充值不足1000U，需要累计达到1000U才算激活
+- 管理员可以使用 `referral:activate-user` 命令手动激活用户
+
+**使用场景**：
+- 数据修复：修复统计数据不一致的问题
+- 批量更新：批量导入用户后重新计算统计
+- 等级调整：手动调整后重新计算等级
+- 定期维护：定期重算所有用户的统计数据
+
+**注意事项**：
+- 重算所有用户可能耗时较长，建议在低峰期执行
+- 重算指定用户时，会自动重算该用户的所有上级
+- 如果等级发生变化，会显示升级提示
+- 操作会显示重算前后的对比数据
+
+**输出信息**：
+- 显示用户的基本信息（ID、邀请码、邀请路径等）
+- 显示重算前的统计数据
+- 显示重算后的统计数据（对比）
+- 如果等级发生变化，会显示升级提示
+
+---
+
 ## 定时任务配置
 
 以下命令已配置为定时任务（在 `routes/console.php` 中）：
@@ -483,6 +711,9 @@ php artisan rewards:dispatch-dividends 2025-11-20
 | `market:generate-ticks` | 生成行情数据 | 定时（每分钟） |
 | `rewards:grant-newbie-next-day` | 发放新手奖励 | 定时（每天） |
 | `rewards:dispatch-dividends` | 发放分红 | 定时（每周） |
+| `referral:bind-inviter` | 手动关联邀请关系 | 按需 |
+| `referral:activate-user` | 手动激活用户 | 按需 |
+| `referral:recalc-stats` | 重算邀请统计 | 按需 |
 
 ---
 
@@ -1043,6 +1274,9 @@ php artisan tron:debug-mnemonic "word1 word2 ... word12" --expected-master="0x12
 | `tron:test-deposit` | 测试充值 | 测试时 |
 | `tron:verify-mnemonic` | 验证助记词 | 按需 |
 | `tron:debug-mnemonic` | 调试助记词 | 排查问题时 |
+| `referral:bind-inviter` | 手动关联邀请关系 | 按需 |
+| `referral:activate-user` | 手动激活用户 | 按需 |
+| `referral:recalc-stats` | 重算邀请统计 | 按需 |
 
 ---
 

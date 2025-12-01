@@ -5,11 +5,18 @@ namespace App\Services\Referral;
 use App\Models\Deposit;
 use App\Models\RefStat;
 use App\Models\User;
+use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class ReferralService
 {
+    /**
+     * Minimum total deposit amount (in USDT) required for user activation.
+     * User must have cumulative deposits >= this amount to be considered "activated".
+     */
+    private const MIN_ACTIVATION_AMOUNT = 1000; // 1000 USDT
+
     public function __construct()
     {
     }
@@ -126,12 +133,18 @@ class ReferralService
             'team_active_count' => $teamActiveCount,
         ]);
         
-        // Recalculate ambassador level based on team_count
-        $newLevel = $this->calculateAmbassadorLevel($teamCount);
+        // Recalculate ambassador level based on team_active_count and direct_active_count
+        // Level requires both team size and direct downlines to meet criteria
+        $newLevel = $this->calculateAmbassadorLevel($teamActiveCount, $directActiveCount);
         $oldLevel = $stat->ambassador_level;
         
         if ($oldLevel !== $newLevel) {
-            $stat->update(['ambassador_level' => $newLevel]);
+            // Update ambassador level and dividend rate
+            $dividendRate = $this->getDividendRateForLevel($newLevel);
+            $stat->update([
+                'ambassador_level' => $newLevel,
+                'dividend_rate' => $dividendRate,
+            ]);
             
             // Auto-grant ambassador reward when level up (if RewardService is available)
             if ($newLevel !== 'L0') {
@@ -149,6 +162,12 @@ class ReferralService
                         ]);
                     }
                 }
+            }
+        } else {
+            // Even if level doesn't change, update dividend rate to ensure consistency
+            $dividendRate = $this->getDividendRateForLevel($newLevel);
+            if ($stat->dividend_rate != $dividendRate) {
+                $stat->update(['dividend_rate' => $dividendRate]);
             }
         }
     }
@@ -177,7 +196,7 @@ class ReferralService
     }
 
     /**
-     * Count active direct downlines (users who have at least one confirmed deposit).
+     * Count active direct downlines (users who have cumulative deposits >= MIN_ACTIVATION_AMOUNT).
      */
     private function countActiveDirectDownlines(int $userId): int
     {
@@ -188,15 +207,19 @@ class ReferralService
             return 0;
         }
         
-        // Count how many of them have at least one confirmed deposit
-        return Deposit::whereIn('user_id', $directDownlines)
-            ->where('status', 'confirmed')
-            ->distinct()
-            ->count('user_id');
+        // Count how many of them are activated (cumulative deposits >= MIN_ACTIVATION_AMOUNT)
+        $activeCount = 0;
+        foreach ($directDownlines as $downlineId) {
+            if ($this->isUserActivated($downlineId)) {
+                $activeCount++;
+            }
+        }
+        
+        return $activeCount;
     }
 
     /**
-     * Count active subtree size (users with at least one confirmed deposit).
+     * Count active subtree size (users with cumulative deposits >= MIN_ACTIVATION_AMOUNT).
      */
     private function countActiveSubtreeSize(int $userId): int
     {
@@ -219,37 +242,104 @@ class ReferralService
             return 0;
         }
         
-        // Count how many of them have at least one confirmed deposit
-        return Deposit::whereIn('user_id', $subtreeUserIds)
-            ->where('status', 'confirmed')
-            ->distinct()
-            ->count('user_id');
+        // Count how many of them are activated (cumulative deposits >= MIN_ACTIVATION_AMOUNT)
+        $activeCount = 0;
+        foreach ($subtreeUserIds as $subtreeUserId) {
+            if ($this->isUserActivated($subtreeUserId)) {
+                $activeCount++;
+            }
+        }
+        
+        return $activeCount;
     }
 
     /**
-     * Calculate ambassador level based on team count.
+     * Check if a user is activated (cumulative deposits >= MIN_ACTIVATION_AMOUNT).
      * 
-     * L1: 10+ team members
-     * L2: 50+ team members
-     * L3: 200+ team members
-     * L4: 1000+ team members
-     * L5: 5000+ team members
+     * @param int $userId User ID to check
+     * @return bool True if user has cumulative deposits >= MIN_ACTIVATION_AMOUNT (1000 USDT)
      */
-    private function calculateAmbassadorLevel(int $teamCount): string
+    public function isUserActivated(int $userId): bool
     {
-        if ($teamCount >= 5000) {
+        // Get all confirmed deposits for this user (in USDT)
+        $deposits = Deposit::where('user_id', $userId)
+            ->where('status', 'confirmed')
+            ->where('currency', 'USDT')
+            ->get();
+        
+        // Sum all deposit amounts using Decimal
+        $totalAmount = Decimal::zero();
+        foreach ($deposits as $deposit) {
+            // Ensure amount is Decimal object
+            $amount = $deposit->amount instanceof Decimal ? $deposit->amount : Decimal::of($deposit->amount);
+            $totalAmount = $totalAmount->add($amount);
+        }
+        
+        // Compare with minimum activation amount
+        $minAmount = Decimal::of(self::MIN_ACTIVATION_AMOUNT);
+        // Use compare method: >= 0 means totalAmount >= minAmount
+        return $totalAmount->compare($minAmount) >= 0;
+    }
+
+    /**
+     * Calculate ambassador level based on active team count and active direct downlines.
+     * 
+     * Level requires BOTH conditions to be met:
+     * - Team size (team_active_count): total activated users in referral tree
+     * - Direct downlines (direct_active_count): direct activated invitees
+     * 
+     * Level 1: 3+ direct activated downlines
+     * Level 2: 20+ team members AND 5+ direct activated downlines
+     * Level 3: 50+ team members AND 8+ direct activated downlines
+     * Level 4: 200+ team members AND 15+ direct activated downlines
+     * Level 5 (Company Ambassador): 500+ team members AND 20+ direct activated downlines
+     */
+    private function calculateAmbassadorLevel(int $activeTeamCount, int $activeDirectCount): string
+    {
+        // Level 5 (Company Ambassador): 500+ team AND 20+ direct
+        if ($activeTeamCount >= 500 && $activeDirectCount >= 20) {
             return 'L5';
-        } elseif ($teamCount >= 1000) {
+        }
+        // Level 4: 200+ team AND 15+ direct
+        elseif ($activeTeamCount >= 200 && $activeDirectCount >= 15) {
             return 'L4';
-        } elseif ($teamCount >= 200) {
+        }
+        // Level 3: 50+ team AND 8+ direct
+        elseif ($activeTeamCount >= 50 && $activeDirectCount >= 8) {
             return 'L3';
-        } elseif ($teamCount >= 50) {
+        }
+        // Level 2: 20+ team AND 5+ direct
+        elseif ($activeTeamCount >= 20 && $activeDirectCount >= 5) {
             return 'L2';
-        } elseif ($teamCount >= 10) {
+        }
+        // Level 1: 3+ direct (no team requirement)
+        elseif ($activeDirectCount >= 3) {
             return 'L1';
         }
         
         return 'L0';
+    }
+
+    /**
+     * Get dividend rate for ambassador level.
+     * 
+     * Trading volume dividend rates:
+     * Level 1: 0.5%
+     * Level 2: 1.0%
+     * Level 3: 1.5%
+     * Level 4: 2.0%
+     * Level 5 (Company Ambassador): 2.5%
+     */
+    private function getDividendRateForLevel(string $level): float
+    {
+        return match ($level) {
+            'L1' => 0.0050, // 0.5%
+            'L2' => 0.0100, // 1.0%
+            'L3' => 0.0150, // 1.5%
+            'L4' => 0.0200, // 2.0%
+            'L5' => 0.0250, // 2.5%
+            default => 0.0,
+        };
     }
 
     /**

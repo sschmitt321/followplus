@@ -98,31 +98,60 @@ class TronDepositService
                         continue;
                     }
 
-                    // Create new deposit record
+                    // Create new deposit record using updateOrCreate to prevent duplicates
+                    // The unique constraint on (txid, tron_address) will prevent duplicates
                     try {
-                        TronDeposit::create([
-                            'user_id' => $wallet->user_id,
-                            'tron_address' => $address,
-                            'txid' => $txid,
-                            'from_address' => $from,
-                            'amount' => $amount,
-                            'token_symbol' => $tokenSymbol,
-                            'confirmations' => 0,
-                            'required_confirmations' => $this->requiredConfirmations,
-                            'status' => 'pending',
-                        ]);
+                        $deposit = TronDeposit::updateOrCreate(
+                            [
+                                'txid' => $txid,
+                                'tron_address' => $address,
+                            ],
+                            [
+                                'user_id' => $wallet->user_id,
+                                'from_address' => $from,
+                                'amount' => $amount,
+                                'token_symbol' => $tokenSymbol,
+                                'confirmations' => 0,
+                                'required_confirmations' => $this->requiredConfirmations,
+                                'status' => 'pending',
+                            ]
+                        );
 
-                        $count++;
-                        $processedCount++;
-                        
-                        Log::channel('tron-deposits')->info('TronDepositService: Created new deposit', [
-                            'user_id' => $wallet->user_id,
-                            'txid' => $txid,
-                            'amount' => $amount,
-                            'to' => $address,
-                            'from' => $from,
-                            'token_symbol' => $tokenSymbol,
-                        ]);
+                        // Only count as new if it was just created
+                        if ($deposit->wasRecentlyCreated) {
+                            $count++;
+                            $processedCount++;
+                            
+                            Log::channel('tron-deposits')->info('TronDepositService: Created new deposit', [
+                                'user_id' => $wallet->user_id,
+                                'txid' => $txid,
+                                'amount' => $amount,
+                                'to' => $address,
+                                'from' => $from,
+                                'token_symbol' => $tokenSymbol,
+                            ]);
+                        } else {
+                            $skippedAlreadyExists++;
+                            Log::channel('tron-deposits')->debug('TronDepositService: Deposit already exists (updateOrCreate)', [
+                                'txid' => $txid,
+                                'address' => $address,
+                            ]);
+                        }
+                    } catch (\Illuminate\Database\QueryException $e) {
+                        // Handle unique constraint violation (shouldn't happen with updateOrCreate, but just in case)
+                        if ($e->getCode() === '23000' || str_contains($e->getMessage(), 'Duplicate entry')) {
+                            $skippedAlreadyExists++;
+                            Log::channel('tron-deposits')->debug('TronDepositService: Duplicate deposit detected (unique constraint)', [
+                                'txid' => $txid,
+                                'address' => $address,
+                            ]);
+                        } else {
+                            Log::channel('tron-deposits')->error('TronDepositService: Failed to create deposit', [
+                                'txid' => $txid,
+                                'address' => $address,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
                     } catch (\Exception $e) {
                         Log::channel('tron-deposits')->error('TronDepositService: Failed to create deposit', [
                             'txid' => $txid,
@@ -168,16 +197,20 @@ class TronDepositService
                 
                 $deposit->update(['confirmations' => $confirmations]);
 
-                // If confirmations reached threshold and status is pending
-                if ($deposit->status === 'pending' && $confirmations >= $deposit->required_confirmations) {
-                    // Mark as confirmed
-                    $deposit->update(['status' => 'confirmed']);
+                // If confirmations reached threshold and status is pending or confirmed (but not yet credited)
+                if (in_array($deposit->status, ['pending', 'confirmed']) && $confirmations >= $deposit->required_confirmations) {
+                    // If status is pending, mark as confirmed first
+                    if ($deposit->status === 'pending') {
+                        $deposit->update(['status' => 'confirmed']);
+                    }
 
-                    // Credit to user account
-                    $this->creditUserBalance($deposit);
+                    // Credit to user account (only if not already credited)
+                    if ($deposit->status !== 'credited') {
+                        $this->creditUserBalance($deposit);
 
-                    // Mark as credited
-                    $deposit->update(['status' => 'credited']);
+                        // Mark as credited
+                        $deposit->update(['status' => 'credited']);
+                    }
                     
                     // Log credited deposit
                     Log::channel('tron-deposits')->info('TronDepositService: Deposit credited', [

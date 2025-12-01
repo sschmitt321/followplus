@@ -72,17 +72,23 @@ class AuthService
         ]);
 
         // Update referral statistics if user has an inviter
-        if ($inviter && $this->referralService) {
-            try {
-                // Update inviter's direct_count
-                $this->referralService->updateReferralStats($inviter->id, $user->id);
-            } catch (\Exception $e) {
-                // Log error but don't fail registration
-                \Log::error('Failed to update referral statistics during registration', [
-                    'user_id' => $user->id,
-                    'inviter_id' => $inviter->id,
-                    'error' => $e->getMessage(),
-                ]);
+        if ($inviter) {
+            // Use app() to resolve ReferralService if not injected (to avoid circular dependency issues)
+            $referralService = $this->referralService ?? app(\App\Services\Referral\ReferralService::class);
+            if ($referralService) {
+                try {
+                    // Update inviter's direct_count
+                    $referralService->updateReferralStats($inviter->id, $user->id);
+                } catch (\Exception $e) {
+                    // Log error but don't fail registration
+                    \Log::error('Failed to update referral statistics during registration', [
+                        'user_id' => $user->id,
+                        'inviter_id' => $inviter->id,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                    // Note: Statistics can be manually recalculated using: php artisan referral:recalc-stats {user_id}
+                }
             }
         }
 

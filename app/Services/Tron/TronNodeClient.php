@@ -165,7 +165,8 @@ class TronNodeClient
     public function getConfirmations(string $txid): int
     {
         try {
-            $url = "{$this->baseUrl}/wallet/gettransactionbyid";
+            // Use gettransactioninfobyid to get block number (this API returns blockNumber)
+            $url = "{$this->baseUrl}/wallet/gettransactioninfobyid";
             
             $headers = [];
             if ($this->apiKey) {
@@ -179,18 +180,35 @@ class TronNodeClient
                 ]);
 
             if (!$response->successful()) {
+                Log::warning('TronNodeClient: Failed to get transaction info', [
+                    'txid' => $txid,
+                    'status' => $response->status(),
+                ]);
                 return 0;
             }
 
             $data = $response->json();
             
-            if (!isset($data['ret'][0]['contractRet']) || $data['ret'][0]['contractRet'] !== 'SUCCESS') {
+            // Check if transaction was successful
+            if (!isset($data['receipt']['result']) || $data['receipt']['result'] !== 'SUCCESS') {
+                return 0;
+            }
+
+            // Get block number from transaction info
+            $txBlock = $data['blockNumber'] ?? 0;
+            
+            if ($txBlock === 0) {
+                // If blockNumber is not available, transaction might not be confirmed yet
                 return 0;
             }
 
             // Get current block number
             $currentBlock = $this->getCurrentBlockNumber();
-            $txBlock = $data['blockNumber'] ?? 0;
+            
+            if ($currentBlock === 0) {
+                // If we can't get current block, return 0 (transaction might not be confirmed)
+                return 0;
+            }
 
             return max(0, $currentBlock - $txBlock);
         } catch (\Exception $e) {

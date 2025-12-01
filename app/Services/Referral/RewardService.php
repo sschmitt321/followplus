@@ -110,20 +110,10 @@ class RewardService
                 );
             }
 
-            // Update active user counts for inviter and all upline users
-            // This is the user's first deposit, so they are now "activated"
-            // We need to update direct_active_count and team_active_count for all upline users
-            try {
-                // Update stats for direct inviter (and all their upline)
-                $this->referralService->recalcTeamStats($directInviterId);
-            } catch (\Exception $e) {
-                // Log error but don't fail the reward process
-                \Log::error('Failed to update active user counts on first deposit', [
-                    'trigger_user_id' => $triggerUserId,
-                    'direct_inviter_id' => $directInviterId,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+            // Note: Statistics update is now handled in DepositService::confirm()
+            // when user reaches activation threshold (cumulative deposits >= 1000 USDT)
+            // We don't update statistics here because user may not be activated yet
+            // (first deposit might be less than 1000 USDT)
         });
     }
 
@@ -226,22 +216,30 @@ class RewardService
                 ['level' => $level]
             );
 
-            // Update stat
-            $stat->increment('ambassador_reward_total', $rewardAmount->toString());
+            // Update stat manually to avoid type issues with MoneyCast
+            $currentTotal = $stat->ambassador_reward_total instanceof Decimal ? $stat->ambassador_reward_total : Decimal::of($stat->ambassador_reward_total ?? 0);
+            $newTotal = $currentTotal->add($rewardAmount);
+            $stat->update(['ambassador_reward_total' => $newTotal]);
         });
     }
 
     /**
      * Get ambassador reward amount by level.
+     * 
+     * Level 1: 50 USD
+     * Level 2: 200 USD
+     * Level 3: 500 USD
+     * Level 4: 1500 USD
+     * Level 5 (Company Ambassador): 3000 USD
      */
     private function getAmbassadorRewardAmount(string $level): Decimal
     {
         return match ($level) {
-            'L1' => Decimal::of('100'),
-            'L2' => Decimal::of('500'),
-            'L3' => Decimal::of('2000'),
-            'L4' => Decimal::of('10000'),
-            'L5' => Decimal::of('50000'),
+            'L1' => Decimal::of('50'),
+            'L2' => Decimal::of('200'),
+            'L3' => Decimal::of('500'),
+            'L4' => Decimal::of('1500'),
+            'L5' => Decimal::of('3000'),
             default => Decimal::zero(),
         };
     }
@@ -389,7 +387,10 @@ class RewardService
                 'dividend_rate' => 0,
             ]
         );
-        $stat->increment('total_rewards', $amount->toString());
+        // Update total_rewards manually to avoid type issues with MoneyCast
+        $currentTotal = $stat->total_rewards instanceof Decimal ? $stat->total_rewards : Decimal::of($stat->total_rewards ?? 0);
+        $newTotal = $currentTotal->add($amount);
+        $stat->update(['total_rewards' => $newTotal]);
 
         return $reward;
     }
@@ -422,7 +423,11 @@ class RewardService
             // Update ref_stat total_rewards
             $stat = RefStat::where('user_id', $reward->user_id)->first();
             if ($stat) {
-                $stat->decrement('total_rewards', $reward->amount->toString());
+                // Update total_rewards manually to avoid type issues with MoneyCast
+                $currentTotal = $stat->total_rewards instanceof Decimal ? $stat->total_rewards : Decimal::of($stat->total_rewards ?? 0);
+                $rewardAmount = $reward->amount instanceof Decimal ? $reward->amount : Decimal::of($reward->amount);
+                $newTotal = $currentTotal->subtract($rewardAmount);
+                $stat->update(['total_rewards' => $newTotal]);
             }
         });
     }
