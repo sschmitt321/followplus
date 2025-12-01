@@ -4,6 +4,7 @@ namespace App\Services\Auth;
 
 use App\Models\User;
 use App\Notifications\ResetPasswordNotification;
+use App\Services\Referral\ReferralService;
 use App\Services\Tron\TronHdWalletService;
 use App\Services\Tron\TronWalletService;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +16,8 @@ class AuthService
 {
     public function __construct(
         private ?TronHdWalletService $hdWalletService = null,
-        private ?TronWalletService $tronWalletService = null
+        private ?TronWalletService $tronWalletService = null,
+        private ?ReferralService $referralService = null
     ) {
     }
     /**
@@ -68,6 +70,21 @@ class AuthService
             'level' => 'none',
             'status' => 'pending',
         ]);
+
+        // Update referral statistics if user has an inviter
+        if ($inviter && $this->referralService) {
+            try {
+                // Update inviter's direct_count
+                $this->referralService->updateReferralStats($inviter->id, $user->id);
+            } catch (\Exception $e) {
+                // Log error but don't fail registration
+                \Log::error('Failed to update referral statistics during registration', [
+                    'user_id' => $user->id,
+                    'inviter_id' => $inviter->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         // Generate Tron wallet address for user
         // Use the same logic as getOrCreateDepositAddress to ensure consistency

@@ -207,6 +207,25 @@ class ReferralService
     }
 
     /**
+     * Update referral statistics after user registration.
+     * 
+     * This method should be called after a new user is registered with an inviter.
+     * It updates the inviter's direct_count and recalculates team statistics.
+     * 
+     * Note: recalcTeamStats() will recalculate direct_count from database,
+     * so we don't need to call incrementDirectCount() separately.
+     * 
+     * @param int $inviterId The inviter's user ID
+     * @param int $newUserId The newly registered user's ID (for logging purposes)
+     */
+    public function updateReferralStats(int $inviterId, int $newUserId): void
+    {
+        // Recalculate team stats for inviter and all upline users
+        // This will update direct_count (by counting) and team_count
+        $this->recalcTeamStats($inviterId);
+    }
+
+    /**
      * Handle direct downline withdrawal paid (detach logic).
      */
     public function onDirectDownlineWithdrawPaid(int $directChildId): void
