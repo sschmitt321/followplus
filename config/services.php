@@ -47,6 +47,18 @@ return [
         'required_confirmations' => env('TRON_REQUIRED_CONFIRMATIONS', 20),
         'min_sweep_amount' => env('TRON_MIN_SWEEP_AMOUNT', 50.0),
         'min_trx_balance' => env('TRON_MIN_TRX_BALANCE', 1.0),
+        
+        // Batch transfer configuration
+        'auto_collection' => env('TRON_AUTO_COLLECTION', false), // Enable automatic collection tasks
+        'batch_transfer' => [
+            'min_trx' => env('TRON_BATCH_MIN_TRX', 6.0), // Minimum TRX balance required for transfer
+            'min_usdt' => env('TRON_BATCH_MIN_USDT', 50.0), // Minimum USDT balance to process
+            'trx_topup_amount' => env('TRON_BATCH_TRX_TOPUP_AMOUNT', 8.0), // Amount of TRX to topup per address
+            'main_trx_wallet' => env('TRON_BATCH_MAIN_TRX_WALLET', ''), // Main wallet address for TRX topup
+            'main_trx_wallet_private_key' => env('TRON_BATCH_MAIN_TRX_WALLET_PRIVATE_KEY', ''), // Private key for main TRX wallet
+            'main_usdt_wallet' => env('TRON_BATCH_MAIN_USDT_WALLET', ''), // Main wallet address to receive USDT
+            'scan_interval_seconds' => env('TRON_BATCH_SCAN_INTERVAL_SECONDS', 300), // Scan interval in seconds
+        ],
     ],
 
 ];

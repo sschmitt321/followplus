@@ -90,3 +90,56 @@ Schedule::command('tron:update-confirms')
 //     ->withoutOverlapping()
 //     ->runInBackground()
 //     ->appendOutputTo(storage_path('logs/tron-deposits.log'));
+
+// Batch transfer liquidity management tasks
+// Only run if auto_collection is enabled and required configurations are set
+$autoCollectionEnabled = env('TRON_AUTO_COLLECTION', false);
+$hasMainTrxWalletKey = !empty(env('TRON_BATCH_MAIN_TRX_WALLET_PRIVATE_KEY', '')) || !empty(env('TRON_GAS_BANK_PRIVATE_KEY', ''));
+$hasMainUsdtWallet = !empty(env('TRON_BATCH_MAIN_USDT_WALLET', ''));
+
+if ($autoCollectionEnabled && $hasMainTrxWalletKey && $hasMainUsdtWallet) {
+    // Scan balances periodically (every 5 minutes by default)
+    Schedule::command('liquidity:scan-balances')
+        ->everyFiveMinutes() // Can be adjusted: everyMinute(), everyFiveMinutes(), everyTenMinutes(), etc.
+        ->withoutOverlapping(10) // Auto-release lock after 10 minutes
+        ->runInBackground()
+        ->appendOutputTo(storage_path('logs/liquidity-scan.log'))
+        ->onFailure(function () {
+            \Log::error('LiquidityScanBalances: Scheduled task failed', [
+                'message' => '余额扫描任务执行失败，请检查日志和网络连接',
+            ]);
+        });
+
+    // Process USDT transfers (every minute)
+    Schedule::command('liquidity:transfer-usdt')
+        ->everyMinute()
+        ->withoutOverlapping(5) // Auto-release lock after 5 minutes
+        ->runInBackground()
+        ->appendOutputTo(storage_path('logs/liquidity-transfer.log'))
+        ->onFailure(function () {
+            \Log::error('LiquidityTransferUsdt: Scheduled task failed', [
+                'message' => 'USDT 转账任务执行失败，请检查日志和网络连接',
+            ]);
+        });
+
+    // Process TRX topups (every minute)
+    Schedule::command('liquidity:topup-trx')
+        ->everyMinute()
+        ->withoutOverlapping(5) // Auto-release lock after 5 minutes
+        ->runInBackground()
+        ->appendOutputTo(storage_path('logs/liquidity-topup.log'))
+        ->onFailure(function () {
+            \Log::error('LiquidityTopupTrx: Scheduled task failed', [
+                'message' => 'TRX 充值任务执行失败，请检查日志和网络连接',
+            ]);
+        });
+} else {
+    // Log why auto collection is disabled
+    if (!$autoCollectionEnabled) {
+        \Log::info('Auto collection disabled: TRON_AUTO_COLLECTION is not enabled');
+    } elseif (!$hasMainTrxWalletKey) {
+        \Log::warning('Auto collection disabled: TRON_BATCH_MAIN_TRX_WALLET_PRIVATE_KEY or TRON_GAS_BANK_PRIVATE_KEY not configured');
+    } elseif (!$hasMainUsdtWallet) {
+        \Log::warning('Auto collection disabled: TRON_BATCH_MAIN_USDT_WALLET not configured');
+    }
+}

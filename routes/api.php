@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\V1\Admin\AdminSystemController;
 use App\Http\Controllers\Api\V1\Admin\AdminUserController;
 use App\Http\Controllers\Api\V1\Admin\AdminWithdrawController;
 use App\Http\Controllers\Api\V1\AuthController;
+use App\Http\Controllers\Api\V1\BatchTransferController;
 use App\Http\Controllers\Api\V1\DepositController;
 use App\Http\Controllers\Api\V1\FollowController;
 use App\Http\Controllers\Api\V1\KycController;
@@ -98,6 +99,17 @@ Route::prefix('v1')->middleware(['rate.limit'])->group(function () {
         Route::post('/follow/order', [FollowController::class, 'placeOrder'])->middleware('idempotency');
         Route::get('/follow/orders', [FollowController::class, 'orders']);
         Route::get('/follow/summary', [FollowController::class, 'summary']);
+
+        // Batch transfer routes (admin only)
+        Route::prefix('batch-transfer')->middleware('admin')->group(function () {
+            Route::get('/addresses', [BatchTransferController::class, 'index']);
+            Route::post('/addresses/sync', [BatchTransferController::class, 'syncAddresses']); // Sync from user_tron_wallets
+            Route::post('/addresses/import', [BatchTransferController::class, 'import']); // Manual import (optional)
+            Route::post('/scan-balances', [BatchTransferController::class, 'scanBalances']);
+            Route::post('/transfer-usdt', [BatchTransferController::class, 'transferUsdt']);
+            Route::post('/topup-trx', [BatchTransferController::class, 'topupTrx']);
+            Route::get('/stats', [BatchTransferController::class, 'stats']);
+        });
 
         // Admin routes (must be admin role)
         Route::prefix('admin')->middleware('admin')->group(function () {
