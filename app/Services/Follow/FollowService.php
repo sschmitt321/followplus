@@ -75,13 +75,13 @@ class FollowService
             $contractBalance = $this->assetsService->getContractBalance($userId, 'USDT');
             $spotBalance = $this->assetsService->getSpotBalance($userId, 'USDT');
             
-            // Calculate required amount (1% of total assets)
-            $totalBalance = $this->assetsService->getTotalBalance($userId);
-            if ($totalBalance->isZero()) {
-                throw new \Exception('Insufficient balance: Account balance is zero');
+            // Calculate required amount (1% of contract account balance only)
+            // Only use contract account balance, not total balance (spot + contract)
+            if ($contractBalance->isZero()) {
+                throw new \Exception('Insufficient balance: Contract account balance is zero');
             }
             
-            $amountBase = $totalBalance->percentage(1, 6);
+            $amountBase = $contractBalance->percentage(1, 6);
             
             // Check if contract account has sufficient balance
             if ($contractBalance->lessThan($amountBase)) {
@@ -130,7 +130,7 @@ class FollowService
             }
 
             // Validate amount_input if provided
-            // If amount_input doesn't match 1% of total assets, use calculated amount_base instead
+            // If amount_input doesn't match 1% of contract account balance, use calculated amount_base instead
             if ($amountInput) {
                 if (!$amountInput->equals($amountBase)) {
                     // Log discrepancy and use calculated amount
@@ -330,10 +330,11 @@ class FollowService
      */
     public function canUserParticipate(int $userId, string $windowType): bool
     {
-        // Check if user has balance first (required for all window types)
-        $totalBalance = $this->assetsService->getTotalBalance($userId);
-        if ($totalBalance->isZero()) {
-            return false; // No balance, cannot participate
+        // Check if user has contract account balance first (required for all window types)
+        // Only check contract account balance, not total balance (spot + contract)
+        $contractBalance = $this->assetsService->getContractBalance($userId, 'USDT');
+        if ($contractBalance->isZero()) {
+            return false; // No contract balance, cannot participate
         }
 
         // fixed_daily: All users can participate (if they have balance)

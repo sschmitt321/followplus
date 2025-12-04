@@ -70,7 +70,7 @@ class FollowController extends Controller
             // First validate basic rules - require invite_token
             $validated = $request->validate([
                 'invite_token' => 'required|string|max:64', // Invite token for the window (max 64 characters)
-                'amount_input' => 'nullable|string', // Optional user input amount (for audit only, actual amount = 1% of total assets)
+                'amount_input' => 'nullable|string', // Optional user input amount (for audit only, actual amount = 1% of contract account balance)
             ]);
 
             // Find the invite token and get the window ID
