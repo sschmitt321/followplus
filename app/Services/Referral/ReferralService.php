@@ -174,25 +174,49 @@ class ReferralService
 
     /**
      * Count subtree size (excluding user itself, only counting downlines).
+     * 
+     * Rule: If a direct downline has more invites than the user, 
+     * that downline's team is excluded from the user's team count.
+     * Otherwise, include the downline and their entire subtree.
      */
     private function countSubtreeSize(int $userId): int
     {
         $user = User::findOrFail($userId);
         
-        // Build path prefix: ref_path + '/' + userId
-        // Handle root path (/) correctly to avoid double slashes
-        $basePath = rtrim($user->ref_path, '/');
-        if ($basePath === '') {
-            $pathPrefix = '/' . $userId;
-        } else {
-            $pathPrefix = $basePath . '/' . $userId;
+        // Get user's direct invite count
+        $userDirectCount = User::where('invited_by_user_id', $userId)->count();
+        
+        // Get all direct downlines
+        $directDownlines = User::where('invited_by_user_id', $userId)->get();
+        
+        $totalCount = 0;
+        
+        foreach ($directDownlines as $downline) {
+            // Check if this downline has more invites than the user
+            $downlineDirectCount = User::where('invited_by_user_id', $downline->id)->count();
+            
+            if ($downlineDirectCount > $userDirectCount) {
+                // Skip this downline's entire team (don't count them)
+                continue;
+            }
+            
+            // Include this downline and their entire subtree
+            $basePath = rtrim($downline->ref_path, '/');
+            if ($basePath === '') {
+                $pathPrefix = '/' . $downline->id;
+            } else {
+                $pathPrefix = $basePath . '/' . $downline->id;
+            }
+            
+            // Count all users in this downline's subtree (including the downline itself)
+            $subtreeCount = User::where('ref_path', 'like', $pathPrefix . '%')
+                ->where('id', '!=', $userId)
+                ->count();
+            
+            $totalCount += $subtreeCount;
         }
         
-        // Count all users whose ref_path starts with this path (excluding self)
-        // This includes direct children (ref_path = '/3') and all descendants (ref_path LIKE '/3/%')
-        return User::where('ref_path', 'like', $pathPrefix . '%')
-            ->where('id', '!=', $userId)
-            ->count();
+        return $totalCount;
     }
 
     /**
@@ -220,37 +244,52 @@ class ReferralService
 
     /**
      * Count active subtree size (users with cumulative deposits >= MIN_ACTIVATION_AMOUNT).
+     * 
+     * Rule: If a direct downline has more active invites than the user, 
+     * that downline's team is excluded from the user's active team count.
+     * Otherwise, include the downline and their entire subtree.
      */
     private function countActiveSubtreeSize(int $userId): int
     {
         $user = User::findOrFail($userId);
         
-        // Build path prefix: ref_path + '/' + userId
-        $basePath = rtrim($user->ref_path, '/');
-        if ($basePath === '') {
-            $pathPrefix = '/' . $userId;
-        } else {
-            $pathPrefix = $basePath . '/' . $userId;
-        }
+        // Get user's active direct invite count
+        $userActiveDirectCount = $this->countActiveDirectDownlines($userId);
         
-        // Get all users in the subtree
-        $subtreeUserIds = User::where('ref_path', 'like', $pathPrefix . '%')
-            ->where('id', '!=', $userId)
-            ->pluck('id');
+        // Get all direct downlines
+        $directDownlines = User::where('invited_by_user_id', $userId)->get();
         
-        if ($subtreeUserIds->isEmpty()) {
-            return 0;
-        }
+        $totalActiveCount = 0;
         
-        // Count how many of them are activated (cumulative deposits >= MIN_ACTIVATION_AMOUNT)
-        $activeCount = 0;
-        foreach ($subtreeUserIds as $subtreeUserId) {
-            if ($this->isUserActivated($subtreeUserId)) {
-                $activeCount++;
+        foreach ($directDownlines as $downline) {
+            // Check if this downline has more active invites than the user
+            $downlineActiveDirectCount = $this->countActiveDirectDownlines($downline->id);
+            
+            if ($downlineActiveDirectCount > $userActiveDirectCount) {
+                // Skip this downline's entire team (don't count them)
+                continue;
+            }
+            
+            // Include active users in this downline's subtree (including the downline itself)
+            $basePath = rtrim($downline->ref_path, '/');
+            if ($basePath === '') {
+                $pathPrefix = '/' . $downline->id;
+            } else {
+                $pathPrefix = $basePath . '/' . $downline->id;
+            }
+            
+            $subtreeUserIds = User::where('ref_path', 'like', $pathPrefix . '%')
+                ->where('id', '!=', $userId)
+                ->pluck('id');
+            
+            foreach ($subtreeUserIds as $subtreeUserId) {
+                if ($this->isUserActivated($subtreeUserId)) {
+                    $totalActiveCount++;
+                }
             }
         }
         
-        return $activeCount;
+        return $totalActiveCount;
     }
 
     /**

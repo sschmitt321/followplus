@@ -10,6 +10,7 @@ use App\Models\Withdrawal;
 use App\Services\Ledger\LedgerService;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class RewardService
 {
@@ -20,12 +21,73 @@ class RewardService
     }
 
     /**
+     * Get reward amounts based on deposit amount (tiered system).
+     * 
+     * Tier structure:
+     * - 1000 USD: Inviter 100, Newbie 100, Upline Assistance 50
+     * - 2000 USD: Inviter 200, Newbie 200, Upline Assistance 100
+     * - 3000 USD: Inviter 300, Newbie 300, Upline Assistance 150
+     * - 5000 USD: Inviter 500, Newbie 500, Upline Assistance 250
+     * - 8000 USD: Inviter 800, Newbie 800, Upline Assistance 400
+     * - 10000 USD: Inviter 1000, Newbie 1000, Upline Assistance 500
+     * 
+     * @return array ['inviter' => Decimal, 'newbie' => Decimal, 'upline_assistance' => Decimal] or null if amount doesn't match any tier
+     */
+    private function getTieredRewardAmounts(Decimal $depositAmount): ?array
+    {
+        $amount = $depositAmount->toFloat();
+        
+        // Match deposit amount to tier
+        if ($amount >= 10000) {
+            return [
+                'inviter' => Decimal::of('1000'),
+                'newbie' => Decimal::of('1000'),
+                'upline_assistance' => Decimal::of('500'),
+            ];
+        } elseif ($amount >= 8000) {
+            return [
+                'inviter' => Decimal::of('800'),
+                'newbie' => Decimal::of('800'),
+                'upline_assistance' => Decimal::of('400'),
+            ];
+        } elseif ($amount >= 5000) {
+            return [
+                'inviter' => Decimal::of('500'),
+                'newbie' => Decimal::of('500'),
+                'upline_assistance' => Decimal::of('250'),
+            ];
+        } elseif ($amount >= 3000) {
+            return [
+                'inviter' => Decimal::of('300'),
+                'newbie' => Decimal::of('300'),
+                'upline_assistance' => Decimal::of('150'),
+            ];
+        } elseif ($amount >= 2000) {
+            return [
+                'inviter' => Decimal::of('200'),
+                'newbie' => Decimal::of('200'),
+                'upline_assistance' => Decimal::of('100'),
+            ];
+        } elseif ($amount >= 1000) {
+            return [
+                'inviter' => Decimal::of('100'),
+                'newbie' => Decimal::of('100'),
+                'upline_assistance' => Decimal::of('50'),
+            ];
+        }
+        
+        return null; // Amount doesn't match any tier
+    }
+
+    /**
      * Grant referral rewards on first deposit.
      * 
-     * Rules:
-     * - 10% to direct inviter
-     * - 5% to notifier (if provided) or upline (if no notifier)
-     * - 5% to upline (second level)
+     * Rules (tiered system based on deposit amount):
+     * - Inviter reward: Based on deposit tier (100/200/300/500/800/1000 USD)
+     * - Newbie reward: Same as inviter reward (granted on T+1)
+     * - Upline assistance reward: Half of inviter reward (if notifier provided and inviter decides to grant)
+     * 
+     * Note: Deposits >= 5000 USD require approval (handled separately)
      */
     public function grantReferralOnDeposit(
         int $triggerUserId,
@@ -43,6 +105,16 @@ class RewardService
                 return; // Already processed
             }
 
+            // Get tiered reward amounts
+            $rewardAmounts = $this->getTieredRewardAmounts($amount);
+            if (!$rewardAmounts) {
+                // Deposit amount doesn't match any tier, skip rewards
+                Log::info("Deposit amount {$amount->toFixed(2)} doesn't match any reward tier, skipping rewards", [
+                    'user_id' => $triggerUserId,
+                ]);
+                return;
+            }
+
             // Create event
             $event = RefEvent::create([
                 'trigger_user_id' => $triggerUserId,
@@ -50,6 +122,11 @@ class RewardService
                 'amount' => $amount,
                 'meta_json' => [
                     'notifier_user_id' => $notifierUserId,
+                    'reward_tier' => [
+                        'inviter' => $rewardAmounts['inviter']->toFixed(2),
+                        'newbie' => $rewardAmounts['newbie']->toFixed(2),
+                        'upline_assistance' => $rewardAmounts['upline_assistance']->toFixed(2),
+                    ],
                 ],
             ]);
 
@@ -60,65 +137,66 @@ class RewardService
                 return; // No inviter
             }
 
-            // Level 1: Direct inviter gets 10%
+            // Level 1: Direct inviter gets tiered reward
             $directInviterId = $uplineChain[0];
-            $reward10pct = $amount->percentage(10);
             $this->createReward(
                 $directInviterId,
                 $triggerUserId,
                 'referral_10pct',
-                $reward10pct,
+                $rewardAmounts['inviter'],
                 $event->id,
                 $bizId
             );
 
-            // Level 2: Notifier or upline gets 5%
-            if ($notifierUserId && $notifierUserId !== $directInviterId) {
-                // Notifier gets 5%
-                $reward5pct = $amount->percentage(5);
-                $this->createReward(
-                    $notifierUserId,
-                    $triggerUserId,
-                    'notifier_5pct',
-                    $reward5pct,
-                    $event->id,
-                    "notifier_5pct_{$triggerUserId}"
-                );
-            } elseif (isset($uplineChain[1])) {
-                // Upline gets 5%
-                $reward5pct = $amount->percentage(5);
-                $this->createReward(
-                    $uplineChain[1],
-                    $triggerUserId,
-                    'upline_5pct',
-                    $reward5pct,
-                    $event->id,
-                    "upline_5pct_{$triggerUserId}"
-                );
+            // Level 2: Upline assistance reward
+            // Rule: "上级辅助彩金由邀请人决定,有辅助才赠送"
+            // - If inviter has an upline (uplineChain[1] exists):
+            //   - If notifier provided and notifier is not the inviter: notifier gets assistance reward
+            //   - If no notifier: upline gets assistance reward
+            // - If inviter has no upline: assistance reward is not granted (no one to assist)
+            if (isset($uplineChain[1])) {
+                // Inviter has an upline, grant assistance reward
+                if ($notifierUserId && $notifierUserId !== $directInviterId) {
+                    // Notifier gets upline assistance reward (half of inviter reward)
+                    $this->createReward(
+                        $notifierUserId,
+                        $triggerUserId,
+                        'notifier_5pct',
+                        $rewardAmounts['upline_assistance'],
+                        $event->id,
+                        "notifier_5pct_{$triggerUserId}"
+                    );
+                } else {
+                    // If no notifier, upline gets assistance reward
+                    $this->createReward(
+                        $uplineChain[1],
+                        $triggerUserId,
+                        'upline_5pct',
+                        $rewardAmounts['upline_assistance'],
+                        $event->id,
+                        "upline_5pct_{$triggerUserId}"
+                    );
+                }
             }
+            // Note: If inviter has no upline (uplineChain[1] doesn't exist),
+            // the assistance reward is not granted as there's no one to assist.
 
-            // Level 3: Second upline gets 5% (if exists)
-            if (isset($uplineChain[2])) {
-                $reward5pct = $amount->percentage(5);
-                $this->createReward(
-                    $uplineChain[2],
-                    $triggerUserId,
-                    'upline_5pct',
-                    $reward5pct,
-                    $event->id,
-                    "upline2_5pct_{$triggerUserId}"
-                );
-            }
-
+            // Note: Newbie reward is granted on T+1 via grantNewbieNextDay()
             // Note: Statistics update is now handled in DepositService::confirm()
             // when user reaches activation threshold (cumulative deposits >= 1000 USDT)
-            // We don't update statistics here because user may not be activated yet
-            // (first deposit might be less than 1000 USDT)
         });
     }
 
     /**
-     * Grant newbie next day reward (10% of first deposit).
+     * Grant newbie next day reward (tiered based on first deposit amount).
+     * 
+     * Reward amount matches the inviter reward tier:
+     * - 1000 USD deposit: 100 USD reward
+     * - 2000 USD deposit: 200 USD reward
+     * - 3000 USD deposit: 300 USD reward
+     * - 5000 USD deposit: 500 USD reward
+     * - 8000 USD deposit: 800 USD reward
+     * - 10000 USD deposit: 1000 USD reward
      */
     public function grantNewbieNextDay(int $triggerUserId): void
     {
@@ -146,21 +224,36 @@ class RewardService
                 return; // No first deposit found
             }
 
+            $depositAmount = Decimal::of($firstDepositEvent->amount);
+            
+            // Get tiered reward amount (newbie reward matches inviter reward)
+            $rewardAmounts = $this->getTieredRewardAmounts($depositAmount);
+            if (!$rewardAmounts) {
+                // Deposit amount doesn't match any tier, skip reward
+                Log::info("Deposit amount {$depositAmount->toFixed(2)} doesn't match any reward tier, skipping newbie reward", [
+                    'user_id' => $triggerUserId,
+                ]);
+                return;
+            }
+
             // Create event
             $event = RefEvent::create([
                 'trigger_user_id' => $triggerUserId,
                 'event_type' => 'newbie_next_day',
-                'amount' => $firstDepositEvent->amount,
-                'meta_json' => [],
+                'amount' => $depositAmount,
+                'meta_json' => [
+                    'reward_tier' => [
+                        'newbie' => $rewardAmounts['newbie']->toFixed(2),
+                    ],
+                ],
             ]);
 
-            // Grant 10% reward
-            $rewardAmount = Decimal::of($firstDepositEvent->amount)->percentage(10);
+            // Grant tiered reward (same as inviter reward)
             $this->createReward(
                 $triggerUserId,
                 null,
                 'newbie_next_day',
-                $rewardAmount,
+                $rewardAmounts['newbie'],
                 $event->id,
                 $bizId
             );
@@ -250,24 +343,48 @@ class RewardService
      * Calculates platform revenue from withdrawal fees for the specified cycle period
      * and distributes dividends to ambassadors based on their dividend rates.
      * 
-     * @param string $cycleDate Cycle date in Y-m-d format (e.g., '2025-11-20')
-     *                          For weekly cycles, this should be the Monday date of the week
+     * Cycle periods:
+     * - 1st cycle: 1st to 4th of the month
+     * - 2nd cycle: 5th to 14th of the month
+     * - 3rd cycle: 15th to 24th of the month
+     * - 4th cycle: 25th to end of the month
+     * 
+     * Dividend dispatch dates: 5th, 15th, 25th of each month
+     * 
+     * @param string $cycleDate Cycle date in Y-m-d format (e.g., '2025-11-05')
+     *                          Should be one of: 5th, 15th, or 25th of the month
      */
     public function dispatchDividend(string $cycleDate): void
     {
-        // Parse cycle date and calculate period (weekly cycle: Monday to Sunday)
-        $cycleStart = \Carbon\Carbon::parse($cycleDate)->startOfWeek(); // Monday
-        $cycleEnd = $cycleStart->copy()->endOfWeek(); // Sunday
+        $date = \Carbon\Carbon::parse($cycleDate);
+        $dayOfMonth = $date->day;
+        
+        // Determine cycle period based on dispatch date
+        if ($dayOfMonth == 5) {
+            // 1st cycle: 1st to 4th
+            $cycleStart = $date->copy()->startOfMonth();
+            $cycleEnd = $date->copy()->subDay()->endOfDay(); // 4th
+        } elseif ($dayOfMonth == 15) {
+            // 2nd cycle: 5th to 14th
+            $cycleStart = $date->copy()->startOfMonth()->addDays(4); // 5th
+            $cycleEnd = $date->copy()->subDay()->endOfDay(); // 14th
+        } elseif ($dayOfMonth == 25) {
+            // 3rd cycle: 15th to 24th
+            $cycleStart = $date->copy()->startOfMonth()->addDays(14); // 15th
+            $cycleEnd = $date->copy()->subDay()->endOfDay(); // 24th
+        } else {
+            throw new \Exception("Invalid cycle date. Must be 5th, 15th, or 25th of the month. Got: {$cycleDate}");
+        }
         
         // Calculate platform revenue from withdrawal fees for this cycle
         $platformRevenue = $this->calculatePlatformRevenue($cycleStart, $cycleEnd);
         
         if ($platformRevenue->isZero()) {
-            \Log::info("No platform revenue for cycle {$cycleDate}, skipping dividend dispatch");
+            Log::info("No platform revenue for cycle {$cycleDate}, skipping dividend dispatch");
             return;
         }
         
-        \Log::info("Dispatching dividends for cycle {$cycleDate}", [
+        Log::info("Dispatching dividends for cycle {$cycleDate}", [
             'cycle_start' => $cycleStart->format('Y-m-d'),
             'cycle_end' => $cycleEnd->format('Y-m-d'),
             'platform_revenue' => $platformRevenue->toFixed(6),

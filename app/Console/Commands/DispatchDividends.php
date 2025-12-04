@@ -26,7 +26,13 @@ class DispatchDividends extends Command
      */
     public function handle(RewardService $rewardService): int
     {
+        // Default to today's date, but should be 5th, 15th, or 25th when called by scheduler
         $cycleDate = $this->argument('cycle_date') ?? now()->format('Y-m-d');
+        
+        $dayOfMonth = (int) date('d', strtotime($cycleDate));
+        if (!in_array($dayOfMonth, [5, 15, 25])) {
+            $this->warn("Warning: Cycle date should be 5th, 15th, or 25th of the month. Got: {$cycleDate}");
+        }
         
         $this->info("Starting dividend dispatch for cycle: {$cycleDate}");
 

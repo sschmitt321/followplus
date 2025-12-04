@@ -326,7 +326,7 @@ class FollowService
      * - User must have balance (total assets > 0)
      * - fixed_daily: All users can participate (if they have balance)
      * - newbie_bonus: Only newbies (registered within 7 days) can participate
-     * - inviter_bonus: Only inviters with ratio >= 30% can participate
+     * - inviter_bonus: Only inviters with at least 1 valid invite can participate (invited user's deposit >= inviter's balance)
      */
     public function canUserParticipate(int $userId, string $windowType): bool
     {
@@ -349,7 +349,7 @@ class FollowService
             return $this->isNewbie($user);
         }
 
-        // inviter_bonus: Check if user has inviter ratio >= 30%
+        // inviter_bonus: Check if user has at least 1 valid invite (invited user's deposit >= inviter's balance)
         if ($windowType === 'inviter_bonus') {
             return $this->hasInviterRatio30Pct($user);
         }
@@ -381,12 +381,28 @@ class FollowService
     }
 
     /**
-     * Check if user has inviter ratio >= 30%.
+     * Check if user has inviter bonus eligibility.
      * 
-     * Inviter ratio = 直接邀请的新人充值总额 / 邀请者当前总资金
-     * If inviter total balance is 0, ratio is 0 (not eligible)
+     * Logic: For each directly invited user, if their total deposit amount >= inviter's total balance,
+     * then that user counts as a valid invite for bonus eligibility.
      * 
-     * If ratio >= 30%, automatically grant 2 days bonus window with 4 extra quota per day.
+     * If there is at least 1 valid invite, the inviter gets bonus window (2 days, 4 extra quota per day).
+     * 
+     * Example:
+     * - Inviter A has 5000U total balance
+     * - A invited B (deposited 1500U), C (deposited 1000U), D (deposited 2000U)
+     * - B: 1500 < 5000, invalid
+     * - C: 1000 < 5000, invalid  
+     * - D: 2000 < 5000, invalid
+     * - Result: No valid invites, no bonus
+     * 
+     * Example 2:
+     * - Inviter A has 5000U total balance
+     * - A invited B (deposited 6000U), C (deposited 1000U), D (deposited 5000U)
+     * - B: 6000 >= 5000, valid ✅
+     * - C: 1000 < 5000, invalid
+     * - D: 5000 >= 5000, valid ✅
+     * - Result: 2 valid invites, gets bonus
      */
     private function hasInviterRatio30Pct(User $user): bool
     {
@@ -394,10 +410,10 @@ class FollowService
         $inviterTotalBalance = $this->assetsService->getTotalBalance($user->id);
         
         if ($inviterTotalBalance->isZero()) {
-            return false; // No balance, cannot calculate ratio
+            return false; // No balance, cannot calculate
         }
 
-        // Get total deposit amount from directly invited users
+        // Get all directly invited users
         $directInvitedUserIds = User::where('invited_by_user_id', $user->id)
             ->pluck('id')
             ->toArray();
@@ -406,32 +422,35 @@ class FollowService
             return false; // No direct invites
         }
 
-        // Calculate total deposit amount from directly invited users
-        $totalDepositAmount = Deposit::whereIn('user_id', $directInvitedUserIds)
-            ->where('status', 'paid') // Only count paid deposits
-            ->sum('amount');
-        
-        if ($totalDepositAmount <= 0) {
-            return false; // No deposits from direct invites
+        // Count valid invites: users whose total deposit >= inviter's total balance
+        $validInviteCount = 0;
+        foreach ($directInvitedUserIds as $invitedUserId) {
+            // Get total deposit amount for this invited user
+            $userTotalDeposit = Deposit::where('user_id', $invitedUserId)
+                ->where('status', 'paid')
+                ->sum('amount');
+            
+            // If this user's total deposit >= inviter's total balance, it's a valid invite
+            if ($userTotalDeposit > 0) {
+                $userDepositDecimal = Decimal::of($userTotalDeposit);
+                if ($userDepositDecimal->isGreaterThanOrEqualTo($inviterTotalBalance)) {
+                    $validInviteCount++;
+                }
+            }
         }
-
-        // Calculate ratio: total deposit amount / inviter total balance
-        $totalDepositDecimal = Decimal::of($totalDepositAmount);
-        $ratio = $totalDepositDecimal->dividedBy($inviterTotalBalance);
         
-        // Check if ratio >= 30% (0.3)
-        $hasRatio = $ratio->isGreaterThanOrEqualTo(Decimal::of('0.3'));
+        // If there is at least 1 valid invite, grant bonus window
+        $hasBonus = $validInviteCount > 0;
         
-        // If ratio >= 30%, grant bonus window (2 days, 4 extra quota per day)
-        if ($hasRatio) {
+        if ($hasBonus) {
             $this->grantInviterBonusWindow($user->id);
         }
         
-        return $hasRatio;
+        return $hasBonus;
     }
 
     /**
-     * Grant bonus window for inviter with ratio >= 30%.
+     * Grant bonus window for inviter with at least 1 valid invite.
      * Creates a 2-day bonus window (today and tomorrow) with 2 extra quota per day (total 4 times).
      * If user already has a bonus window, appends a new 2-day window starting from the day after the existing window ends.
      * 
@@ -544,7 +563,7 @@ class FollowService
             return 'Unknown reason (newbie_bonus window)';
         }
 
-        // inviter_bonus: Check inviter ratio
+        // inviter_bonus: Check inviter bonus eligibility
         if ($windowType === 'inviter_bonus') {
             // Get inviter's total balance
             $inviterTotalBalance = $this->assetsService->getTotalBalance($user->id);
@@ -553,7 +572,7 @@ class FollowService
                 return 'User has no balance';
             }
             
-            // Get total deposit amount from directly invited users
+            // Get all directly invited users
             $directInvitedUserIds = User::where('invited_by_user_id', $user->id)
                 ->pluck('id')
                 ->toArray();
@@ -562,18 +581,31 @@ class FollowService
                 return 'User has no direct invites';
             }
             
-            $totalDepositAmount = Deposit::whereIn('user_id', $directInvitedUserIds)
-                ->where('status', 'paid')
-                ->sum('amount');
-            
-            if ($totalDepositAmount <= 0) {
-                return 'No deposits from direct invites';
+            // Count valid invites: users whose total deposit >= inviter's total balance
+            $validInviteCount = 0;
+            $invalidInviteCount = 0;
+            foreach ($directInvitedUserIds as $invitedUserId) {
+                $userTotalDeposit = Deposit::where('user_id', $invitedUserId)
+                    ->where('status', 'paid')
+                    ->sum('amount');
+                
+                if ($userTotalDeposit > 0) {
+                    $userDepositDecimal = Decimal::of($userTotalDeposit);
+                    if ($userDepositDecimal->isGreaterThanOrEqualTo($inviterTotalBalance)) {
+                        $validInviteCount++;
+                    } else {
+                        $invalidInviteCount++;
+                    }
+                } else {
+                    $invalidInviteCount++;
+                }
             }
             
-            $totalDepositDecimal = Decimal::of($totalDepositAmount);
-            $ratio = $totalDepositDecimal->dividedBy($inviterTotalBalance)->multipliedBy(100);
+            if ($validInviteCount == 0) {
+                return "User has no valid invites (required: at least 1 invite with deposit >= {$inviterTotalBalance->toFixed(2)}). Valid: {$validInviteCount}, Invalid: {$invalidInviteCount}";
+            }
             
-            return "User inviter ratio is {$ratio->toFixed(2)}% (required: >= 30%). Direct invites deposit: {$totalDepositDecimal->toFixed(2)}, Inviter balance: {$inviterTotalBalance->toFixed(2)}";
+            return "User has {$validInviteCount} valid invite(s) (required: >= 1). Invalid invites: {$invalidInviteCount}";
         }
 
         return "Unknown window type: {$windowType}";

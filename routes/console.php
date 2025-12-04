@@ -21,15 +21,41 @@ Schedule::command('rewards:grant-newbie-next-day')
         ]);
     });
 
-// Schedule dividend dispatch (weekly on Monday at 00:00)
+// Schedule dividend dispatch (monthly on 5th, 15th, 25th at 00:00)
 // Distributes platform revenue (withdrawal fees) to ambassadors based on their dividend rates
+// Cycle periods:
+// - 1st cycle (dispatched on 5th): 1st to 4th of the month
+// - 2nd cycle (dispatched on 15th): 5th to 14th of the month
+// - 3rd cycle (dispatched on 25th): 15th to 24th of the month
 Schedule::command('rewards:dispatch-dividends')
-    ->weeklyOn(1, '00:00') // Monday at 00:00
+    ->cron('0 0 5 * *') // 5th of each month at 00:00
     ->withoutOverlapping(30) // Auto-release lock after 30 minutes
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/rewards-dividends.log'))
     ->onFailure(function () {
-        \Log::error('DispatchDividends: Scheduled task failed', [
+        \Log::error('DispatchDividends: Scheduled task failed (5th)', [
+            'message' => '定时任务执行失败，请检查日志',
+        ]);
+    });
+
+Schedule::command('rewards:dispatch-dividends')
+    ->cron('0 0 15 * *') // 15th of each month at 00:00
+    ->withoutOverlapping(30)
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/rewards-dividends.log'))
+    ->onFailure(function () {
+        \Log::error('DispatchDividends: Scheduled task failed (15th)', [
+            'message' => '定时任务执行失败，请检查日志',
+        ]);
+    });
+
+Schedule::command('rewards:dispatch-dividends')
+    ->cron('0 0 25 * *') // 25th of each month at 00:00
+    ->withoutOverlapping(30)
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/rewards-dividends.log'))
+    ->onFailure(function () {
+        \Log::error('DispatchDividends: Scheduled task failed (25th)', [
             'message' => '定时任务执行失败，请检查日志',
         ]);
     });
