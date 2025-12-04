@@ -64,6 +64,35 @@ class ReferralController extends Controller
     }
 
     /**
+     * Get reward type label in Chinese.
+     */
+    private function getRewardTypeLabel(string $type): string
+    {
+        return match ($type) {
+            'referral_10pct' => '首充推荐奖励',
+            'notifier_5pct' => '通知人奖励',
+            'upline_5pct' => '上级奖励',
+            'newbie_next_day' => '新人次日奖励',
+            'ambassador_oneoff' => '等级一次性奖励',
+            'dividend' => '周期分红',
+            default => $type,
+        };
+    }
+
+    /**
+     * Get reward status label in Chinese.
+     */
+    private function getRewardStatusLabel(string $status): string
+    {
+        return match ($status) {
+            'pending' => '待确认',
+            'confirmed' => '已确认',
+            'cancelled' => '已取消',
+            default => $status,
+        };
+    }
+
+    /**
      * Get reward history.
      * 
      * Returns paginated list of referral rewards earned by the authenticated user.
@@ -74,20 +103,21 @@ class ReferralController extends Controller
      * 
      * @param Request $request Query parameters
      * @param string|null $request->type Optional. Filter by reward type. Allowed values depend on reward types configured in system.
-     * @param string|null $request->status Optional. Filter by reward status. Allowed values: "pending", "paid", "reversed".
+     * @param string|null $request->status Optional. Filter by reward status. Allowed values: "pending", "confirmed", "cancelled".
      * @param int|null $request->page Optional. Page number for pagination (default: 1)
      * 
      * @return JsonResponse Returns paginated reward list with metadata:
-     * - rewards: Array of reward records with type, amount, status, source_user_id, and timestamp
+     * - rewards: Array of reward records with type, type_label, amount, status, status_label, source_user info, and timestamp
      * - pagination: Pagination metadata (current_page, total_pages, total)
      * 
-     * Query example: ?type=direct&status=paid&page=1
+     * Query example: ?type=referral_10pct&status=confirmed&page=1
      */
     public function rewards(Request $request): JsonResponse
     {
         $user = auth()->user();
         
-        $query = RefReward::where('user_id', $user->id);
+        $query = RefReward::where('user_id', $user->id)
+            ->with('sourceUser:id,email,phone'); // Load source user info
         
         // Filter by type
         if ($request->has('type')) {
@@ -104,19 +134,33 @@ class ReferralController extends Controller
 
         return response()->json([
             'rewards' => $rewards->map(function ($reward) {
+                $sourceUserInfo = null;
+                if ($reward->source_user_id && $reward->sourceUser) {
+                    $sourceUserInfo = [
+                        'id' => $reward->sourceUser->id,
+                        'email' => $reward->sourceUser->email,
+                        'phone' => $reward->sourceUser->phone,
+                    ];
+                }
+
                 return [
                     'id' => $reward->id,
                     'type' => $reward->type,
+                    'type_label' => $this->getRewardTypeLabel($reward->type),
                     'amount' => $reward->amount->toFixed(6),
                     'status' => $reward->status,
+                    'status_label' => $this->getRewardStatusLabel($reward->status),
                     'source_user_id' => $reward->source_user_id,
-                    'created_at' => $reward->created_at->toIso8601String(),
+                    'source_user' => $sourceUserInfo,
+                    'created_at' => $reward->created_at->setTimezone('Asia/Shanghai')->format('Y-m-d H:i:s'),
+                    'created_at_iso' => $reward->created_at->toIso8601String(),
                 ];
             }),
             'pagination' => [
                 'current_page' => $rewards->currentPage(),
                 'total_pages' => $rewards->lastPage(),
                 'total' => $rewards->total(),
+                'per_page' => $rewards->perPage(),
             ],
         ]);
     }
