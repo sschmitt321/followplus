@@ -197,10 +197,14 @@ class ReferralService
             
             if ($downlineDirectCount > $userDirectCount) {
                 // Skip this downline's entire team (don't count them)
+                // If downline has more invites, user loses rights to count this downline's team
                 continue;
             }
             
-            // Include this downline and their entire subtree
+            // Include the direct downline itself (count = 1)
+            $totalCount += 1;
+            
+            // Include all users in this downline's subtree (all indirect invites)
             $basePath = rtrim($downline->ref_path, '/');
             if ($basePath === '') {
                 $pathPrefix = '/' . $downline->id;
@@ -208,9 +212,10 @@ class ReferralService
                 $pathPrefix = $basePath . '/' . $downline->id;
             }
             
-            // Count all users in this downline's subtree (including the downline itself)
+            // Count all users in this downline's subtree (excluding the downline itself, as we already counted it)
             $subtreeCount = User::where('ref_path', 'like', $pathPrefix . '%')
-                ->where('id', '!=', $userId)
+                ->where('id', '!=', $downline->id)  // Exclude the direct downline itself (already counted above)
+                ->where('id', '!=', $userId)  // Exclude the user itself
                 ->count();
             
             $totalCount += $subtreeCount;
@@ -267,10 +272,16 @@ class ReferralService
             
             if ($downlineActiveDirectCount > $userActiveDirectCount) {
                 // Skip this downline's entire team (don't count them)
+                // If downline has more active invites, user loses rights to count this downline's team
                 continue;
             }
             
-            // Include active users in this downline's subtree (including the downline itself)
+            // Include the direct downline itself if activated (count = 1)
+            if ($this->isUserActivated($downline->id)) {
+                $totalActiveCount += 1;
+            }
+            
+            // Include all active users in this downline's subtree (all indirect invites)
             $basePath = rtrim($downline->ref_path, '/');
             if ($basePath === '') {
                 $pathPrefix = '/' . $downline->id;
@@ -278,8 +289,10 @@ class ReferralService
                 $pathPrefix = $basePath . '/' . $downline->id;
             }
             
+            // Count all active users in this downline's subtree (excluding the downline itself, as we already counted it)
             $subtreeUserIds = User::where('ref_path', 'like', $pathPrefix . '%')
-                ->where('id', '!=', $userId)
+                ->where('id', '!=', $downline->id)  // Exclude the direct downline itself (already counted above)
+                ->where('id', '!=', $userId)  // Exclude the user itself
                 ->pluck('id');
             
             foreach ($subtreeUserIds as $subtreeUserId) {

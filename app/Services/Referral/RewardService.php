@@ -268,18 +268,16 @@ class RewardService
         DB::transaction(function () use ($userId, $level) {
             $stat = RefStat::lockForUpdate()->where('user_id', $userId)->firstOrFail();
             
-            // Check if already granted for this level
-            if ($stat->ambassador_level === $level) {
-                // Check if reward already granted
-                $existingReward = RefReward::where('user_id', $userId)
-                    ->where('type', 'ambassador_oneoff')
-                    ->where('status', 'confirmed')
-                    ->whereJsonContains('meta_json->level', $level)
-                    ->first();
-                
-                if ($existingReward) {
-                    return; // Already granted
-                }
+            // Check if already granted for this level using biz_id (which is unique per level)
+            $bizId = "ambassador_{$level}_{$userId}";
+            $existingReward = RefReward::where('user_id', $userId)
+                ->where('type', 'ambassador_oneoff')
+                ->where('status', 'confirmed')
+                ->where('biz_id', $bizId)
+                ->first();
+            
+            if ($existingReward) {
+                return; // Already granted for this level
             }
 
             // Calculate reward amount based on level
@@ -298,7 +296,6 @@ class RewardService
             ]);
 
             // Create reward
-            $bizId = "ambassador_{$level}_{$userId}";
             $this->createReward(
                 $userId,
                 null,
