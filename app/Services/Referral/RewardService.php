@@ -492,21 +492,57 @@ class RewardService
         $reward->update(['status' => 'confirmed']);
 
         // Update ref_stat total_rewards
-        $stat = RefStat::firstOrCreate(
-            ['user_id' => $userId],
-            [
-                'direct_count' => 0,
-                'team_count' => 0,
-                'ambassador_level' => 'L0',
-                'dividend_rate' => 0,
-            ]
-        );
-        // Update total_rewards manually to avoid type issues with MoneyCast
-        $currentTotal = $stat->total_rewards instanceof Decimal ? $stat->total_rewards : Decimal::of($stat->total_rewards ?? 0);
-        $newTotal = $currentTotal->add($amount);
-        $stat->update(['total_rewards' => $newTotal]);
+        // Only count rewards earned from inviting others, exclude rewards from being invited (e.g., newbie_next_day)
+        if ($this->shouldCountInTotalRewards($type)) {
+            $stat = RefStat::firstOrCreate(
+                ['user_id' => $userId],
+                [
+                    'direct_count' => 0,
+                    'team_count' => 0,
+                    'ambassador_level' => 'L0',
+                    'dividend_rate' => 0,
+                ]
+            );
+            // Update total_rewards manually to avoid type issues with MoneyCast
+            $currentTotal = $stat->total_rewards instanceof Decimal ? $stat->total_rewards : Decimal::of($stat->total_rewards ?? 0);
+            $newTotal = $currentTotal->add($amount);
+            $stat->update(['total_rewards' => $newTotal]);
+        }
 
         return $reward;
+    }
+
+    /**
+     * Check if a reward type should be counted in total_rewards.
+     * 
+     * Only rewards earned from inviting others should be counted:
+     * - referral_10pct: Inviter reward for first deposit
+     * - notifier_5pct: Notifier reward
+     * - upline_5pct: Upline assistance reward
+     * - ambassador_oneoff: Ambassador level reward
+     * - dividend: Cycle dividend
+     * 
+     * Excluded rewards (from being invited):
+     * - newbie_next_day: Newbie next day reward (user was invited by someone)
+     * 
+     * @param string $rewardType Reward type
+     * @return bool True if should count in total_rewards
+     */
+    private function shouldCountInTotalRewards(string $rewardType): bool
+    {
+        // Exclude newbie_next_day (reward for being invited)
+        if ($rewardType === 'newbie_next_day') {
+            return false;
+        }
+        
+        // Include all other reward types (earned from inviting others)
+        return in_array($rewardType, [
+            'referral_10pct',
+            'notifier_5pct',
+            'upline_5pct',
+            'ambassador_oneoff',
+            'dividend',
+        ]);
     }
 
     /**
@@ -535,13 +571,16 @@ class RewardService
             $reward->update(['status' => 'cancelled']);
 
             // Update ref_stat total_rewards
-            $stat = RefStat::where('user_id', $reward->user_id)->first();
-            if ($stat) {
-                // Update total_rewards manually to avoid type issues with MoneyCast
-                $currentTotal = $stat->total_rewards instanceof Decimal ? $stat->total_rewards : Decimal::of($stat->total_rewards ?? 0);
-                $rewardAmount = $reward->amount instanceof Decimal ? $reward->amount : Decimal::of($reward->amount);
-                $newTotal = $currentTotal->subtract($rewardAmount);
-                $stat->update(['total_rewards' => $newTotal]);
+            // Only count rewards earned from inviting others, exclude rewards from being invited (e.g., newbie_next_day)
+            if ($this->shouldCountInTotalRewards($reward->type)) {
+                $stat = RefStat::where('user_id', $reward->user_id)->first();
+                if ($stat) {
+                    // Update total_rewards manually to avoid type issues with MoneyCast
+                    $currentTotal = $stat->total_rewards instanceof Decimal ? $stat->total_rewards : Decimal::of($stat->total_rewards ?? 0);
+                    $rewardAmount = $reward->amount instanceof Decimal ? $reward->amount : Decimal::of($reward->amount);
+                    $newTotal = $currentTotal->subtract($rewardAmount);
+                    $stat->update(['total_rewards' => $newTotal]);
+                }
             }
         });
     }
