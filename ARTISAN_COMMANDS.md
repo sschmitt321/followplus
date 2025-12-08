@@ -383,6 +383,45 @@ php artisan follow:settle-orders
 
 ---
 
+### `follow:check-user`
+
+**功能**：检查用户的跟单情况，确定最新的跟单金额
+
+**用法**：
+```bash
+php artisan follow:check-user {user}
+```
+
+**参数**：
+- `user`：用户标识（邮箱或用户ID）（必填）
+
+**示例**：
+```bash
+# 使用邮箱查询
+php artisan follow:check-user user@example.com
+
+# 使用用户ID查询
+php artisan follow:check-user 123
+```
+
+**说明**：
+- 显示用户的基本信息（ID、邮箱、角色、状态等）
+- 显示跟单订单统计（总订单数、进行中订单、已结算订单等）
+- 显示最新跟单订单的详细信息（包括金额）
+- 检查是否有进行中的订单（会影响新订单创建）
+- 显示最近10条订单列表
+- 总结最新跟单金额和当前状态
+
+**输出内容**：
+- 用户信息表格
+- 跟单订单统计表格
+- 最新跟单订单详情表格
+- 进行中订单列表（如果有）
+- 最近10条订单列表
+- 总结信息（最新跟单金额、是否可以创建新订单）
+
+---
+
 ## 市场数据
 
 ### `market:generate-ticks`
@@ -818,6 +857,67 @@ php artisan referral:grant-missing-ambassador-rewards --force
 
 ---
 
+### `ref:fix-total-rewards`
+
+**功能**：修复 `total_rewards` 字段：只统计因邀请别人产生的奖励，排除 `newbie_next_day` 奖励
+
+**用法**：
+```bash
+php artisan ref:fix-total-rewards [--dry-run] [--user-id=]
+```
+
+**选项**：
+- `--dry-run`：只显示将要修改的数据，不实际修改
+- `--user-id`：只修复指定用户的 `total_rewards`
+
+**示例**：
+
+**1. 预览模式（查看所有需要修复的用户）**：
+```bash
+php artisan ref:fix-total-rewards --dry-run
+```
+
+**2. 修复所有用户的 total_rewards**：
+```bash
+php artisan ref:fix-total-rewards
+```
+
+**3. 修复指定用户的 total_rewards**：
+```bash
+php artisan ref:fix-total-rewards --user-id=19
+```
+
+**说明**：
+
+**功能特性**：
+- 重新计算所有用户的 `total_rewards` 字段
+- 只统计因邀请别人产生的奖励类型：
+  - `referral_10pct` - 首充推荐奖励
+  - `notifier_5pct` - 通知人奖励
+  - `upline_5pct` - 上级奖励
+  - `ambassador_oneoff` - 等级一次性奖励
+  - `dividend` - 周期分红
+- 排除别人邀请他产生的奖励：
+  - `newbie_next_day` - 新人次日奖励
+
+**使用场景**：
+- 数据修复：修复历史数据中 `total_rewards` 字段的错误计算
+- 规则调整：当奖励统计规则发生变化时，批量修复历史数据
+- 单用户修复：针对特定用户进行修复
+
+**注意事项**：
+- 默认情况下会显示需要修复的用户列表并要求确认
+- 使用 `--dry-run` 可以预览将要修复的用户，不会实际修改数据
+- 修复操作会显示每个用户的当前值、正确值和差异
+- 会显示被排除的 `newbie_next_day` 奖励详情
+
+**输出信息**：
+- 显示需要修复的用户列表（包括用户ID、当前 total_rewards、正确的 total_rewards、差异）
+- 显示被排除的 `newbie_next_day` 奖励详情
+- 显示修复操作的结果（修复的用户数量、总差异）
+
+---
+
 ## 定时任务配置
 
 以下命令已配置为定时任务（在 `routes/console.php` 中）：
@@ -850,6 +950,7 @@ php artisan referral:grant-missing-ambassador-rewards --force
 | `referral:recalc-stats` | 重算邀请统计 | 按需 |
 | `referral:revoke-ambassador-benefits` | 撤销代言人福利 | 定时（每天01:00） |
 | `referral:grant-missing-ambassador-rewards` | 补发代言人奖励 | 按需 |
+| `ref:fix-total-rewards` | 修复 total_rewards 字段 | 按需 |
 
 ---
 
@@ -1393,6 +1494,7 @@ php artisan tron:debug-mnemonic "word1 word2 ... word12" --expected-master="0x12
 | `follow:create-window-with-token` | 创建跟单窗口 | 按需 |
 | `follow:generate-windows` | 批量生成窗口 | 定时/按需 |
 | `follow:settle-orders` | 结算订单 | 定时（每分钟） |
+| `follow:check-user` | 检查用户跟单情况 | 按需 |
 | `market:generate-ticks` | 生成行情数据 | 定时（每分钟，已注释） |
 | `rewards:grant-newbie-next-day` | 发放新手奖励 | 定时（每天，已注释） |
 | `rewards:dispatch-dividends` | 发放分红 | 定时（每周，已注释） |
@@ -1416,6 +1518,7 @@ php artisan tron:debug-mnemonic "word1 word2 ... word12" --expected-master="0x12
 | `referral:recalc-stats` | 重算邀请统计 | 按需 |
 | `referral:revoke-ambassador-benefits` | 撤销代言人福利 | 定时（每天01:00） |
 | `referral:grant-missing-ambassador-rewards` | 补发代言人奖励 | 按需 |
+| `ref:fix-total-rewards` | 修复 total_rewards 字段 | 按需 |
 
 ---
 
@@ -1434,5 +1537,5 @@ php artisan tron:debug-mnemonic "word1 word2 ... word12" --expected-master="0x12
 
 ---
 
-最后更新：2025-11-21
+最后更新：2025-12-05
 

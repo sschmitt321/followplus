@@ -393,25 +393,27 @@ class FollowService
     /**
      * Check if user has inviter bonus eligibility.
      * 
-     * Logic: For each directly invited user, if their total deposit amount >= inviter's total balance,
+     * Logic: For each directly invited user, if any single deposit amount >= inviter's total balance * 1/3,
      * then that user counts as a valid invite for bonus eligibility.
      * 
      * If there is at least 1 valid invite, the inviter gets bonus window (2 days, 4 extra quota per day).
      * 
      * Example:
-     * - Inviter A has 5000U total balance
-     * - A invited B (deposited 1500U), C (deposited 1000U), D (deposited 2000U)
-     * - B: 1500 < 5000, invalid
-     * - C: 1000 < 5000, invalid  
-     * - D: 2000 < 5000, invalid
-     * - Result: No valid invites, no bonus
+     * - Inviter A has 3000U total balance
+     * - Threshold: 3000 * 1/3 = 1000U
+     * - A invited B (single deposit 1500U), C (single deposit 800U), D (single deposit 1200U)
+     * - B: 1500 >= 1000, valid ✅
+     * - C: 800 < 1000, invalid  
+     * - D: 1200 >= 1000, valid ✅
+     * - Result: 2 valid invites, gets bonus
      * 
      * Example 2:
-     * - Inviter A has 5000U total balance
-     * - A invited B (deposited 6000U), C (deposited 1000U), D (deposited 5000U)
-     * - B: 6000 >= 5000, valid ✅
-     * - C: 1000 < 5000, invalid
-     * - D: 5000 >= 5000, valid ✅
+     * - Inviter A has 6000U total balance
+     * - Threshold: 6000 * 1/3 = 2000U
+     * - A invited B (single deposit 1999U), C (single deposit 2000U), D (single deposit 2001U)
+     * - B: 1999 < 2000, invalid
+     * - C: 2000 >= 2000, valid ✅
+     * - D: 2001 >= 2000, valid ✅
      * - Result: 2 valid invites, gets bonus
      */
     private function hasInviterRatio30Pct(User $user): bool
@@ -423,6 +425,9 @@ class FollowService
             return false; // No balance, cannot calculate
         }
 
+        // Calculate threshold: inviter's total balance * 1/3
+        $threshold = $inviterTotalBalance->divide(3, 6);
+
         // Get all directly invited users
         $directInvitedUserIds = User::where('invited_by_user_id', $user->id)
             ->pluck('id')
@@ -432,22 +437,25 @@ class FollowService
             return false; // No direct invites
         }
 
-        // Count valid invites: users whose total deposit >= inviter's total balance
+        // Count valid invites: users who have at least one single deposit >= threshold
         $validInviteCount = 0;
         foreach ($directInvitedUserIds as $invitedUserId) {
-            // Get total deposit amount for this invited user
-            // Use 'confirmed' status (deposits table uses: pending, confirmed, failed)
-            $userTotalDeposit = Deposit::where('user_id', $invitedUserId)
-                ->where('status', 'paid')
-            ->sum('amount');
-        
-            // If this user's total deposit >= inviter's total balance, it's a valid invite
-            if ($userTotalDeposit > 0) {
-                $userDepositDecimal = Decimal::of($userTotalDeposit);
-                // Use greaterThan or equals (>=)
-                if ($userDepositDecimal->greaterThan($inviterTotalBalance) || $userDepositDecimal->equals($inviterTotalBalance)) {
-                    $validInviteCount++;
+            // Get all confirmed deposits for this invited user
+            $deposits = Deposit::where('user_id', $invitedUserId)
+                ->where('status', 'confirmed')
+                ->get();
+            
+            // Check if any single deposit >= threshold
+            $hasValidDeposit = false;
+            foreach ($deposits as $deposit) {
+                if ($deposit->amount->greaterThan($threshold) || $deposit->amount->equals($threshold)) {
+                    $hasValidDeposit = true;
+                    break; // Found one valid deposit, no need to check others
                 }
+            }
+            
+            if ($hasValidDeposit) {
+                $validInviteCount++;
             }
         }
         
@@ -593,32 +601,39 @@ class FollowService
                 return 'User has no direct invites';
             }
             
-            // Count valid invites: users whose total deposit >= inviter's total balance
+            // Calculate threshold: inviter's total balance * 1/3
+            $threshold = $inviterTotalBalance->divide(3, 6);
+            
+            // Count valid invites: users who have at least one single deposit >= threshold
             $validInviteCount = 0;
             $invalidInviteCount = 0;
             foreach ($directInvitedUserIds as $invitedUserId) {
-                $userTotalDeposit = Deposit::where('user_id', $invitedUserId)
-                ->where('status', 'paid')
-                ->sum('amount');
-            
-                if ($userTotalDeposit > 0) {
-                    $userDepositDecimal = Decimal::of($userTotalDeposit);
-                    // Use greaterThan or equals (>=)
-                    if ($userDepositDecimal->greaterThan($inviterTotalBalance) || $userDepositDecimal->equals($inviterTotalBalance)) {
-                        $validInviteCount++;
-                    } else {
-                        $invalidInviteCount++;
+                // Get all confirmed deposits for this invited user
+                $deposits = Deposit::where('user_id', $invitedUserId)
+                    ->where('status', 'confirmed')
+                    ->get();
+                
+                // Check if any single deposit >= threshold
+                $hasValidDeposit = false;
+                foreach ($deposits as $deposit) {
+                    if ($deposit->amount->greaterThan($threshold) || $deposit->amount->equals($threshold)) {
+                        $hasValidDeposit = true;
+                        break;
                     }
+                }
+                
+                if ($hasValidDeposit) {
+                    $validInviteCount++;
                 } else {
                     $invalidInviteCount++;
                 }
             }
             
             if ($validInviteCount == 0) {
-                return "User has no valid invites (required: at least 1 invite with deposit >= {$inviterTotalBalance->toFixed(2)}). Valid: {$validInviteCount}, Invalid: {$invalidInviteCount}";
+                return "User has no valid invites (required: at least 1 invite with single deposit >= {$threshold->toFixed(2)}). Valid: {$validInviteCount}, Invalid: {$invalidInviteCount}";
             }
             
-            return "User has {$validInviteCount} valid invite(s) (required: >= 1). Invalid invites: {$invalidInviteCount}";
+            return "User has {$validInviteCount} valid invite(s) (required: >= 1, threshold: {$threshold->toFixed(2)}). Invalid invites: {$invalidInviteCount}";
         }
 
         return "Unknown window type: {$windowType}";
