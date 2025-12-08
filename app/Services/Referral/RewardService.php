@@ -188,15 +188,10 @@ class RewardService
     }
 
     /**
-     * Grant newbie next day reward (tiered based on first deposit amount).
+     * Grant newbie next day reward (10% of first deposit amount).
      * 
-     * Reward amount matches the inviter reward tier:
-     * - 1000 USD deposit: 100 USD reward
-     * - 2000 USD deposit: 200 USD reward
-     * - 3000 USD deposit: 300 USD reward
-     * - 5000 USD deposit: 500 USD reward
-     * - 8000 USD deposit: 800 USD reward
-     * - 10000 USD deposit: 1000 USD reward
+     * Reward amount is 10% of the first deposit amount.
+     * Example: 1500 USD deposit = 150 USD reward
      */
     public function grantNewbieNextDay(int $triggerUserId): void
     {
@@ -226,15 +221,8 @@ class RewardService
 
             $depositAmount = Decimal::of($firstDepositEvent->amount);
             
-            // Get tiered reward amount (newbie reward matches inviter reward)
-            $rewardAmounts = $this->getTieredRewardAmounts($depositAmount);
-            if (!$rewardAmounts) {
-                // Deposit amount doesn't match any tier, skip reward
-                Log::info("Deposit amount {$depositAmount->toFixed(2)} doesn't match any reward tier, skipping newbie reward", [
-                    'user_id' => $triggerUserId,
-                ]);
-                return;
-            }
+            // Calculate reward as 10% of deposit amount
+            $rewardAmount = $depositAmount->multiply('0.1');
 
             // Create event
             $event = RefEvent::create([
@@ -242,18 +230,18 @@ class RewardService
                 'event_type' => 'newbie_next_day',
                 'amount' => $depositAmount,
                 'meta_json' => [
-                    'reward_tier' => [
-                        'newbie' => $rewardAmounts['newbie']->toFixed(2),
-                    ],
+                    'reward_amount' => $rewardAmount->toFixed(2),
+                    'deposit_amount' => $depositAmount->toFixed(2),
+                    'reward_rate' => '10%',
                 ],
             ]);
 
-            // Grant tiered reward (same as inviter reward)
+            // Grant reward (10% of deposit amount)
             $this->createReward(
                 $triggerUserId,
                 null,
                 'newbie_next_day',
-                $rewardAmounts['newbie'],
+                $rewardAmount,
                 $event->id,
                 $bizId
             );

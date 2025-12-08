@@ -788,6 +788,82 @@ php artisan referral:revoke-ambassador-benefits --force
 
 ---
 
+### `referral:check-level-compliance`
+
+**功能**：检查所有代言人用户是否符合当前等级要求，列出不符合条件的用户供管理员审核
+
+**用法**：
+```bash
+php artisan referral:check-level-compliance [--user-id=] [--level=] [--dry-run] [--auto-downgrade]
+```
+
+**选项**：
+- `--user-id`：只检查指定用户ID（可选）
+- `--level`：只检查指定等级（L1-L5）（可选）
+- `--dry-run`：仅显示不符合条件的用户，不实际降级
+- `--auto-downgrade`：自动降级不符合条件的用户（需要确认）
+
+**示例**：
+
+**1. 预览模式（查看所有不符合条件的用户）**：
+```bash
+php artisan referral:check-level-compliance --dry-run
+```
+
+**2. 检查所有用户并自动降级**：
+```bash
+php artisan referral:check-level-compliance --auto-downgrade
+```
+
+**3. 只检查指定用户**：
+```bash
+php artisan referral:check-level-compliance --user-id=18 --dry-run
+```
+
+**4. 只检查指定等级**：
+```bash
+php artisan referral:check-level-compliance --level=L2 --dry-run
+```
+
+**说明**：
+
+**功能特性**：
+- 扫描所有有代言人等级的用户（L1-L5）
+- 检查每个用户是否符合当前等级的要求：
+  - **L1**：需要 3+ 直属激活下级（无团队要求）
+  - **L2**：需要 20+ 团队激活人数 AND 5+ 直属激活下级
+  - **L3**：需要 50+ 团队激活人数 AND 8+ 直属激活下级
+  - **L4**：需要 200+ 团队激活人数 AND 15+ 直属激活下级
+  - **L5**：需要 500+ 团队激活人数 AND 20+ 直属激活下级
+- 对于不符合条件的用户，计算应该降级到的等级
+- 显示详细的检查结果，包括不符合的具体项（团队数不足/直属数不足）
+
+**使用场景**：
+- 定期检查：确保所有代言人都符合当前等级要求
+- 数据修复：修复因团队人数变化导致的等级不符问题
+- 单用户检查：针对特定用户或等级进行检查
+- 降级处理：批量降级不符合条件的用户
+
+**注意事项**：
+- 默认情况下只显示不符合条件的用户，不会实际降级
+- 使用 `--dry-run` 可以预览将要降级的用户，不会实际修改数据
+- 使用 `--auto-downgrade` 可以自动降级，但需要确认
+- 降级操作会同时更新等级和分红比例
+- 降级操作会记录详细的日志
+
+**输出信息**：
+- 显示找到的代言人用户总数
+- 按等级分组显示不符合条件的用户列表（包括用户ID、手机号、邮箱、当前等级、应降级至、团队激活数、直属激活数、不符合项）
+- 显示统计信息（降级分布：L2 → L1 等）
+- 显示降级操作的结果（成功/失败数量）
+
+**等级要求说明**：
+- 等级要求必须同时满足团队激活人数和直属激活下级数
+- 如果用户不符合当前等级要求，会降级到符合的最高等级
+- L0 表示不符合任何等级要求（无等级）
+
+---
+
 ### `referral:grant-missing-ambassador-rewards`
 
 **功能**：扫描并补发已升级但未收到奖励的代言人升级奖励
@@ -949,6 +1025,7 @@ php artisan ref:fix-total-rewards --user-id=19
 | `referral:activate-user` | 手动激活用户 | 按需 |
 | `referral:recalc-stats` | 重算邀请统计 | 按需 |
 | `referral:revoke-ambassador-benefits` | 撤销代言人福利 | 定时（每天01:00） |
+| `referral:check-level-compliance` | 检查代言人等级合规性 | 按需 |
 | `referral:grant-missing-ambassador-rewards` | 补发代言人奖励 | 按需 |
 | `ref:fix-total-rewards` | 修复 total_rewards 字段 | 按需 |
 
@@ -1517,6 +1594,7 @@ php artisan tron:debug-mnemonic "word1 word2 ... word12" --expected-master="0x12
 | `referral:activate-user` | 手动激活用户 | 按需 |
 | `referral:recalc-stats` | 重算邀请统计 | 按需 |
 | `referral:revoke-ambassador-benefits` | 撤销代言人福利 | 定时（每天01:00） |
+| `referral:check-level-compliance` | 检查代言人等级合规性 | 按需 |
 | `referral:grant-missing-ambassador-rewards` | 补发代言人奖励 | 按需 |
 | `ref:fix-total-rewards` | 修复 total_rewards 字段 | 按需 |
 
@@ -1537,5 +1615,5 @@ php artisan tron:debug-mnemonic "word1 word2 ... word12" --expected-master="0x12
 
 ---
 
-最后更新：2025-12-05
+最后更新：2025-12-06
 
