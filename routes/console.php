@@ -21,6 +21,20 @@ Schedule::command('rewards:grant-newbie-next-day')
         ]);
     });
 
+// Schedule ambassador benefits revocation scan (daily at 01:00)
+// Scans all ambassadors and revokes benefits if direct_active_count < 3
+// This handles cases where direct downlines withdraw and leave, causing the count to drop below 3
+Schedule::command('referral:revoke-ambassador-benefits')
+    ->dailyAt('01:00')
+    ->withoutOverlapping(30) // Auto-release lock after 30 minutes
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/revoke-ambassador-benefits.log'))
+    ->onFailure(function () {
+        \Log::error('RevokeAmbassadorBenefits: Scheduled task failed', [
+            'message' => '定时任务执行失败，请检查日志',
+        ]);
+    });
+
 // Schedule dividend dispatch (monthly on 5th, 15th, 25th at 00:00)
 // Distributes platform revenue (withdrawal fees) to ambassadors based on their dividend rates
 // Cycle periods:

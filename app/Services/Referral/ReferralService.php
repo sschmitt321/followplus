@@ -197,10 +197,14 @@ class ReferralService
             
             if ($downlineDirectCount > $userDirectCount) {
                 // Skip this downline's entire team (don't count them)
+                // If downline has more invites, user loses rights to count this downline's team
                 continue;
             }
             
-            // Include this downline and their entire subtree
+            // Include the direct downline itself (count = 1)
+            $totalCount += 1;
+            
+            // Include all users in this downline's subtree (all indirect invites)
             $basePath = rtrim($downline->ref_path, '/');
         if ($basePath === '') {
                 $pathPrefix = '/' . $downline->id;
@@ -267,10 +271,16 @@ class ReferralService
             
             if ($downlineActiveDirectCount > $userActiveDirectCount) {
                 // Skip this downline's entire team (don't count them)
+                // If downline has more active invites, user loses rights to count this downline's team
                 continue;
             }
             
-            // Include active users in this downline's subtree (including the downline itself)
+            // Include the direct downline itself if activated (count = 1)
+            if ($this->isUserActivated($downline->id)) {
+                $totalActiveCount += 1;
+            }
+            
+            // Include all active users in this downline's subtree (all indirect invites)
             $basePath = rtrim($downline->ref_path, '/');
         if ($basePath === '') {
                 $pathPrefix = '/' . $downline->id;

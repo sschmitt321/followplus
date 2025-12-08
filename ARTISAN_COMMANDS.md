@@ -685,13 +685,147 @@ php artisan referral:recalc-stats --all --force
 
 ---
 
+### `referral:revoke-ambassador-benefits`
+
+**功能**：扫描并撤销不符合条件的代言人福利（当直属下级数低于3人时撤销）
+
+**用法**：
+```bash
+php artisan referral:revoke-ambassador-benefits [--dry-run] [--force]
+```
+
+**选项**：
+- `--dry-run`：仅显示将要撤销的用户，不实际执行
+- `--force`：跳过确认提示
+
+**示例**：
+
+**1. 预览模式（不实际修改）**：
+```bash
+php artisan referral:revoke-ambassador-benefits --dry-run
+```
+
+**2. 实际执行（需要确认）**：
+```bash
+php artisan referral:revoke-ambassador-benefits
+```
+
+**3. 实际执行（跳过确认）**：
+```bash
+php artisan referral:revoke-ambassador-benefits --force
+```
+
+**说明**：
+
+**功能特性**：
+- 扫描所有有代言人等级的用户（L1-L5）
+- 检查他们的 `direct_active_count`（激活的直属下级数）
+- 如果 `direct_active_count < 3`，撤销代言人福利：
+  - 将 `ambassador_level` 从 L1-L5 降为 `L0`
+  - 将 `dividend_rate`（分红比例）设为 `0`
+- 记录操作日志
+
+**撤销条件**：
+- 当用户的激活直属下级数（`direct_active_count`）低于 3 人时
+- 这通常发生在直属下级撤资退出后
+
+**使用场景**：
+- 定期检查：确保只有符合条件的用户才能享受代言人福利
+- 数据修复：修复因撤资导致的代言人福利状态不一致
+- 合规检查：确保代言人福利的发放符合规则
+
+**注意事项**：
+- 默认情况下会显示需要撤销的用户列表并要求确认
+- 使用 `--dry-run` 可以预览将要撤销的用户，不会实际修改数据
+- 撤销操作会记录详细的日志
+- 撤销后，用户需要重新满足条件才能再次获得代言人福利
+
+**输出信息**：
+- 显示找到的代言人用户总数
+- 显示需要撤销的用户列表（包括用户ID、手机号、邮箱、当前等级、激活直属下级数、分红比例）
+- 显示撤销操作的结果（成功/失败数量）
+
+**定时任务**：已配置为每天凌晨 01:00 自动执行
+
+---
+
+### `referral:grant-missing-ambassador-rewards`
+
+**功能**：扫描并补发已升级但未收到奖励的代言人升级奖励
+
+**用法**：
+```bash
+php artisan referral:grant-missing-ambassador-rewards [--user-id=] [--dry-run] [--force]
+```
+
+**选项**：
+- `--user-id`：指定用户ID（可选，如果指定则只处理该用户）
+- `--dry-run`：仅显示将要补发的用户，不实际执行
+- `--force`：跳过确认提示
+
+**示例**：
+
+**1. 预览模式（查看所有需要补发的用户）**：
+```bash
+php artisan referral:grant-missing-ambassador-rewards --dry-run
+```
+
+**2. 补发所有用户的奖励**：
+```bash
+php artisan referral:grant-missing-ambassador-rewards
+```
+
+**3. 补发指定用户的奖励**：
+```bash
+php artisan referral:grant-missing-ambassador-rewards --user-id=18
+```
+
+**4. 跳过确认提示**：
+```bash
+php artisan referral:grant-missing-ambassador-rewards --force
+```
+
+**说明**：
+
+**功能特性**：
+- 扫描所有有代言人等级的用户（L1-L5）
+- 检查每个用户是否已收到对应等级的奖励
+- 对于未收到奖励的用户，自动补发对应等级的奖励
+- 使用 `biz_id` 来检查是否已发放（格式：`ambassador_{level}_{userId}`）
+
+**奖励金额**：
+- L1：50 USDT
+- L2：200 USDT
+- L3：500 USDT
+- L4：1500 USDT
+- L5：3000 USDT
+
+**使用场景**：
+- 数据修复：修复因升级时奖励发放失败导致的遗漏
+- 批量补发：一次性补发所有遗漏的奖励
+- 单用户修复：针对特定用户进行补发
+
+**注意事项**：
+- 默认情况下会显示需要补发的用户列表并要求确认
+- 使用 `--dry-run` 可以预览将要补发的用户，不会实际修改数据
+- 补发操作会记录详细的日志
+- 如果奖励已经发放过，不会重复发放（通过 `biz_id` 检查）
+
+**输出信息**：
+- 显示找到的代言人用户总数
+- 显示需要补发的用户列表（包括用户ID、手机号、邮箱、等级、应发放金额、当前奖励总额）
+- 显示补发操作的结果（成功/失败数量）
+
+---
+
 ## 定时任务配置
 
 以下命令已配置为定时任务（在 `routes/console.php` 中）：
 
 - `follow:settle-orders`：每分钟执行一次
-- `rewards:grant-newbie-next-day`：每天 00:10 执行（已注释）
-- `rewards:dispatch-dividends`：每周一 00:00 执行（已注释）
+- `rewards:grant-newbie-next-day`：每天 00:10 执行
+- `referral:revoke-ambassador-benefits`：每天 01:00 执行
+- `rewards:dispatch-dividends`：每月 5日、15日、25日 00:00 执行
 - `follow:generate-windows`：每天 00:05 执行（已注释）
 - `market:generate-ticks`：每分钟执行一次（已注释）
 
@@ -714,6 +848,8 @@ php artisan referral:recalc-stats --all --force
 | `referral:bind-inviter` | 手动关联邀请关系 | 按需 |
 | `referral:activate-user` | 手动激活用户 | 按需 |
 | `referral:recalc-stats` | 重算邀请统计 | 按需 |
+| `referral:revoke-ambassador-benefits` | 撤销代言人福利 | 定时（每天01:00） |
+| `referral:grant-missing-ambassador-rewards` | 补发代言人奖励 | 按需 |
 
 ---
 
@@ -1224,11 +1360,12 @@ php artisan tron:debug-mnemonic "word1 word2 ... word12" --expected-master="0x12
 - `follow:settle-orders`：每分钟执行一次
 - `tron:scan-deposits`：每分钟执行一次
 - `tron:update-confirms`：每分钟执行一次
+- `rewards:grant-newbie-next-day`：每天 00:10 执行
+- `referral:revoke-ambassador-benefits`：每天 01:00 执行
+- `rewards:dispatch-dividends`：每月 5日、15日、25日 00:00 执行
 
 ### 已注释的定时任务
 
-- `rewards:grant-newbie-next-day`：每天 00:10 执行
-- `rewards:dispatch-dividends`：每周一 00:00 执行
 - `follow:generate-windows`：每天 00:05 执行
 - `market:generate-ticks`：每分钟执行一次
 
@@ -1277,6 +1414,8 @@ php artisan tron:debug-mnemonic "word1 word2 ... word12" --expected-master="0x12
 | `referral:bind-inviter` | 手动关联邀请关系 | 按需 |
 | `referral:activate-user` | 手动激活用户 | 按需 |
 | `referral:recalc-stats` | 重算邀请统计 | 按需 |
+| `referral:revoke-ambassador-benefits` | 撤销代言人福利 | 定时（每天01:00） |
+| `referral:grant-missing-ambassador-rewards` | 补发代言人奖励 | 按需 |
 
 ---
 

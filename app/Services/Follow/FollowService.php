@@ -436,6 +436,7 @@ class FollowService
         $validInviteCount = 0;
         foreach ($directInvitedUserIds as $invitedUserId) {
             // Get total deposit amount for this invited user
+            // Use 'confirmed' status (deposits table uses: pending, confirmed, failed)
             $userTotalDeposit = Deposit::where('user_id', $invitedUserId)
                 ->where('status', 'paid')
             ->sum('amount');
@@ -443,7 +444,8 @@ class FollowService
             // If this user's total deposit >= inviter's total balance, it's a valid invite
             if ($userTotalDeposit > 0) {
                 $userDepositDecimal = Decimal::of($userTotalDeposit);
-                if ($userDepositDecimal->isGreaterThanOrEqualTo($inviterTotalBalance)) {
+                // Use greaterThan or equals (>=)
+                if ($userDepositDecimal->greaterThan($inviterTotalBalance) || $userDepositDecimal->equals($inviterTotalBalance)) {
                     $validInviteCount++;
                 }
             }
@@ -601,7 +603,8 @@ class FollowService
             
                 if ($userTotalDeposit > 0) {
                     $userDepositDecimal = Decimal::of($userTotalDeposit);
-                    if ($userDepositDecimal->isGreaterThanOrEqualTo($inviterTotalBalance)) {
+                    // Use greaterThan or equals (>=)
+                    if ($userDepositDecimal->greaterThan($inviterTotalBalance) || $userDepositDecimal->equals($inviterTotalBalance)) {
                         $validInviteCount++;
                     } else {
                         $invalidInviteCount++;
