@@ -202,16 +202,16 @@ class ReferralService
             
             // Include this downline and their entire subtree
             $basePath = rtrim($downline->ref_path, '/');
-            if ($basePath === '') {
+        if ($basePath === '') {
                 $pathPrefix = '/' . $downline->id;
-            } else {
+        } else {
                 $pathPrefix = $basePath . '/' . $downline->id;
-            }
-            
+        }
+        
             // Count all users in this downline's subtree (including the downline itself)
             $subtreeCount = User::where('ref_path', 'like', $pathPrefix . '%')
-                ->where('id', '!=', $userId)
-                ->count();
+            ->where('id', '!=', $userId)
+            ->count();
             
             $totalCount += $subtreeCount;
         }
@@ -272,18 +272,18 @@ class ReferralService
             
             // Include active users in this downline's subtree (including the downline itself)
             $basePath = rtrim($downline->ref_path, '/');
-            if ($basePath === '') {
+        if ($basePath === '') {
                 $pathPrefix = '/' . $downline->id;
-            } else {
+        } else {
                 $pathPrefix = $basePath . '/' . $downline->id;
-            }
-            
-            $subtreeUserIds = User::where('ref_path', 'like', $pathPrefix . '%')
-                ->where('id', '!=', $userId)
-                ->pluck('id');
-            
-            foreach ($subtreeUserIds as $subtreeUserId) {
-                if ($this->isUserActivated($subtreeUserId)) {
+        }
+        
+        $subtreeUserIds = User::where('ref_path', 'like', $pathPrefix . '%')
+            ->where('id', '!=', $userId)
+            ->pluck('id');
+        
+        foreach ($subtreeUserIds as $subtreeUserId) {
+            if ($this->isUserActivated($subtreeUserId)) {
                     $totalActiveCount++;
                 }
             }

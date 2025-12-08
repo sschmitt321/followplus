@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Models\UserAssetsSummary;
 use App\Support\Decimal;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AssetsService
 {
@@ -25,6 +26,9 @@ class AssetsService
 
     /**
      * Get contract account balance for user (for follow trading).
+     * 
+     * Returns only available balance, excluding frozen balance.
+     * Frozen balance is already allocated to existing orders and should not be used for new order calculations.
      */
     public function getContractBalance(int $userId, string $currency = 'USDT'): Decimal
     {
@@ -38,7 +42,9 @@ class AssetsService
             return Decimal::zero();
         }
 
-        return $account->available->add($account->frozen);
+        // Only return available balance, not frozen balance
+        // Frozen balance is already allocated to existing orders
+        return $account->available;
     }
 
     /**
@@ -71,7 +77,7 @@ class AssetsService
 
         while ($retryCount < $maxRetries) {
             try {
-        return DB::transaction(function () use ($userId) {
+                return DB::transaction(function () use ($userId) {
                     // Calculate balances first (outside of lock)
             $accounts = Account::where('user_id', $userId)->get();
             
@@ -143,7 +149,7 @@ class AssetsService
                     $delay = rand(10000, 50000) * $retryCount;
                     usleep($delay);
                     
-                    \Log::warning('AssetsService: Deadlock or duplicate key detected, retrying', [
+                    Log::warning('AssetsService: Deadlock or duplicate key detected, retrying', [
                         'user_id' => $userId,
                         'retry' => $retryCount,
                         'delay_us' => $delay,

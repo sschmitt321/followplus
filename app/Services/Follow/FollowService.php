@@ -71,6 +71,16 @@ class FollowService
                 throw new \Exception('Symbol mismatch');
             }
 
+            // Check if user has any ongoing follow order (status='placed')
+            // Only one follow order can be active at a time
+            $ongoingOrder = FollowOrder::where('user_id', $userId)
+                ->where('status', 'placed')
+                ->first();
+
+            if ($ongoingOrder) {
+                throw new \Exception('您有进行中的跟单订单，请等待订单结算后再创建新订单');
+            }
+
             // Check contract account balance (required for follow trading)
             $contractBalance = $this->assetsService->getContractBalance($userId, 'USDT');
             $spotBalance = $this->assetsService->getSpotBalance($userId, 'USDT');
@@ -428,8 +438,8 @@ class FollowService
             // Get total deposit amount for this invited user
             $userTotalDeposit = Deposit::where('user_id', $invitedUserId)
                 ->where('status', 'paid')
-                ->sum('amount');
-            
+            ->sum('amount');
+        
             // If this user's total deposit >= inviter's total balance, it's a valid invite
             if ($userTotalDeposit > 0) {
                 $userDepositDecimal = Decimal::of($userTotalDeposit);
@@ -586,9 +596,9 @@ class FollowService
             $invalidInviteCount = 0;
             foreach ($directInvitedUserIds as $invitedUserId) {
                 $userTotalDeposit = Deposit::where('user_id', $invitedUserId)
-                    ->where('status', 'paid')
-                    ->sum('amount');
-                
+                ->where('status', 'paid')
+                ->sum('amount');
+            
                 if ($userTotalDeposit > 0) {
                     $userDepositDecimal = Decimal::of($userTotalDeposit);
                     if ($userDepositDecimal->isGreaterThanOrEqualTo($inviterTotalBalance)) {

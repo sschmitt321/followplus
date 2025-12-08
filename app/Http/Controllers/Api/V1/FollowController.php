@@ -192,6 +192,8 @@ class FollowController extends Controller
             // Handle specific error messages
             if (str_contains($errorMessage, 'already been used')) {
                 $userMessage = '该跟单码已被使用，每个跟单码只能使用一次';
+            } elseif (str_contains($errorMessage, '进行中的跟单订单') || str_contains($errorMessage, 'ongoing follow order')) {
+                $userMessage = '您有进行中的跟单订单，请等待订单结算后再创建新订单';
             } elseif (str_contains($errorMessage, '合约账户余额不足')) {
                 // Keep the original message as it already guides user to transfer from spot to contract
                 $userMessage = $errorMessage;

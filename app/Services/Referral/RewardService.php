@@ -156,27 +156,27 @@ class RewardService
             // - If inviter has no upline: assistance reward is not granted (no one to assist)
             if (isset($uplineChain[1])) {
                 // Inviter has an upline, grant assistance reward
-                if ($notifierUserId && $notifierUserId !== $directInviterId) {
+            if ($notifierUserId && $notifierUserId !== $directInviterId) {
                     // Notifier gets upline assistance reward (half of inviter reward)
-                    $this->createReward(
-                        $notifierUserId,
-                        $triggerUserId,
-                        'notifier_5pct',
+                $this->createReward(
+                    $notifierUserId,
+                    $triggerUserId,
+                    'notifier_5pct',
                         $rewardAmounts['upline_assistance'],
-                        $event->id,
-                        "notifier_5pct_{$triggerUserId}"
-                    );
+                    $event->id,
+                    "notifier_5pct_{$triggerUserId}"
+                );
                 } else {
                     // If no notifier, upline gets assistance reward
-                    $this->createReward(
-                        $uplineChain[1],
-                        $triggerUserId,
-                        'upline_5pct',
+                $this->createReward(
+                    $uplineChain[1],
+                    $triggerUserId,
+                    'upline_5pct',
                         $rewardAmounts['upline_assistance'],
-                        $event->id,
-                        "upline_5pct_{$triggerUserId}"
-                    );
-                }
+                    $event->id,
+                    "upline_5pct_{$triggerUserId}"
+                );
+            }
             }
             // Note: If inviter has no upline (uplineChain[1] doesn't exist),
             // the assistance reward is not granted as there's no one to assist.
