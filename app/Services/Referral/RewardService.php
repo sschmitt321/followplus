@@ -323,6 +323,98 @@ class RewardService
     }
 
     /**
+     * Deduct ambassador reward when level down.
+     * 
+     * When a user's ambassador level decreases, we need to deduct the reward
+     * that was previously granted for the higher level.
+     * 
+     * @param int $userId User ID
+     * @param string $oldLevel Previous level (being downgraded from)
+     * @param string $newLevel New level (being downgraded to)
+     */
+    public function deductAmbassadorRewardOnLevelDown(int $userId, string $oldLevel, string $newLevel): void
+    {
+        DB::transaction(function () use ($userId, $oldLevel, $newLevel) {
+            $stat = RefStat::lockForUpdate()->where('user_id', $userId)->firstOrFail();
+            
+            // Calculate the difference between old and new level rewards
+            $oldLevelReward = $this->getAmbassadorRewardAmount($oldLevel);
+            $newLevelReward = $this->getAmbassadorRewardAmount($newLevel);
+            
+            // Calculate deduction amount (difference)
+            $deductionAmount = $oldLevelReward->subtract($newLevelReward);
+            
+            if ($deductionAmount->isZero() || $deductionAmount->isNegative()) {
+                return; // No deduction needed
+            }
+
+            // Check if already deducted for this level down using biz_id
+            $bizId = "ambassador_deduction_{$oldLevel}_to_{$newLevel}_{$userId}";
+            $existingDeduction = RefReward::where('user_id', $userId)
+                ->where('type', 'ambassador_oneoff_deduction')
+                ->where('status', 'confirmed')
+                ->where('biz_id', $bizId)
+                ->first();
+            
+            if ($existingDeduction) {
+                return; // Already deducted for this level down
+            }
+
+            // Create event
+            $event = RefEvent::create([
+                'trigger_user_id' => $userId,
+                'event_type' => 'ambassador_level_down',
+                'amount' => $deductionAmount,
+                'meta_json' => [
+                    'old_level' => $oldLevel,
+                    'new_level' => $newLevel,
+                ],
+            ]);
+
+            // Create negative reward record
+            $reward = RefReward::create([
+                'user_id' => $userId,
+                'source_user_id' => null,
+                'type' => 'ambassador_oneoff_deduction',
+                'amount' => $deductionAmount->multiply('-1'), // Negative amount
+                'status' => 'pending',
+                'ref_event_id' => $event->id,
+                'biz_id' => $bizId,
+            ]);
+
+            // Debit from user's account
+            $this->ledgerService->debit(
+                $userId,
+                'spot',
+                'USDT',
+                $deductionAmount,
+                'reward_deduction',
+                $reward->id
+            );
+
+            // Confirm deduction
+            $reward->update(['status' => 'confirmed']);
+
+            // Update stat ambassador_reward_total
+            $currentTotal = $stat->ambassador_reward_total instanceof Decimal ? $stat->ambassador_reward_total : Decimal::of($stat->ambassador_reward_total ?? 0);
+            $newTotal = $currentTotal->subtract($deductionAmount);
+            $stat->update(['ambassador_reward_total' => $newTotal]);
+
+            // Update ref_stat total_rewards (subtract from total)
+            $currentTotalRewards = $stat->total_rewards instanceof Decimal ? $stat->total_rewards : Decimal::of($stat->total_rewards ?? 0);
+            $newTotalRewards = $currentTotalRewards->subtract($deductionAmount);
+            $stat->update(['total_rewards' => $newTotalRewards]);
+
+            Log::info('Ambassador reward deducted on level down', [
+                'user_id' => $userId,
+                'old_level' => $oldLevel,
+                'new_level' => $newLevel,
+                'deduction_amount' => $deductionAmount->toFixed(6),
+            ]);
+        });
+    }
+
+    /**
      * Dispatch dividend for a cycle date.
      * 
      * Calculates platform revenue from withdrawal fees for the specified cycle period

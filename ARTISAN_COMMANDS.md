@@ -650,11 +650,11 @@ php artisan referral:activate-user user@example.com --force
 
 ### `referral:recalc-stats`
 
-**功能**：重新计算邀请统计数据（`direct_count`、`team_count`、`ambassador_level`、`dividend_rate`）
+**功能**：重新计算邀请统计数据（`direct_count`、`team_count`、`ambassador_level`、`dividend_rate`），可选处理等级变化的奖励/扣除
 
 **用法**：
 ```bash
-php artisan referral:recalc-stats [user_id] [--all] [--force]
+php artisan referral:recalc-stats [user_id] [--all] [--process-rewards] [--force]
 ```
 
 **参数**：
@@ -662,6 +662,7 @@ php artisan referral:recalc-stats [user_id] [--all] [--force]
 
 **选项**：
 - `--all`：重算所有用户的统计数据
+- `--process-rewards`：强制处理等级变化的奖励/扣除（不受自动触发开关影响）
 - `--force`：跳过确认提示
 
 **示例**：
@@ -676,9 +677,19 @@ php artisan referral:recalc-stats 3
 php artisan referral:recalc-stats --all
 ```
 
-**3. 跳过确认提示**：
+**3. 重算并处理奖励/扣除（当自动触发关闭时）**：
 ```bash
-php artisan referral:recalc-stats --all --force
+php artisan referral:recalc-stats 3 --process-rewards
+```
+
+**4. 重算所有用户并处理奖励/扣除**：
+```bash
+php artisan referral:recalc-stats --all --process-rewards
+```
+
+**5. 跳过确认提示**：
+```bash
+php artisan referral:recalc-stats --all --process-rewards --force
 ```
 
 **说明**：
@@ -690,6 +701,13 @@ php artisan referral:recalc-stats --all --force
 - 重新计算用户的大使等级（`ambassador_level`）
 - 重新计算用户的分红比例（`dividend_rate`）
 - 如果指定用户ID，会同时重算该用户的所有上级
+- 使用 `--process-rewards` 选项时，会处理等级变化的奖励/扣除（不受自动触发开关影响）
+
+**奖励/扣除处理**：
+- 默认情况下，是否处理奖励/扣除取决于 `REFERRAL_AUTO_TRIGGER_LEVEL_CHANGES` 配置
+- 使用 `--process-rewards` 选项时，强制处理奖励/扣除，不受配置影响
+- 等级上升时：发放对应等级的奖励
+- 等级下降时：扣除等级差异对应的金额
 
 **统计数据说明**：
 - `direct_count`：直接邀请的人数（一级下线）
@@ -709,18 +727,21 @@ php artisan referral:recalc-stats --all --force
 - 批量更新：批量导入用户后重新计算统计
 - 等级调整：手动调整后重新计算等级
 - 定期维护：定期重算所有用户的统计数据
+- 手动处理奖励：当自动触发关闭时，使用 `--process-rewards` 手动处理奖励/扣除
 
 **注意事项**：
 - 重算所有用户可能耗时较长，建议在低峰期执行
 - 重算指定用户时，会自动重算该用户的所有上级
 - 如果等级发生变化，会显示升级提示
 - 操作会显示重算前后的对比数据
+- 如果自动触发已关闭，命令会提示可以使用 `--process-rewards` 选项
 
 **输出信息**：
 - 显示用户的基本信息（ID、邀请码、邀请路径等）
 - 显示重算前的统计数据
 - 显示重算后的统计数据（对比）
 - 如果等级发生变化，会显示升级提示
+- 如果使用 `--process-rewards`，会显示奖励/扣除处理结果
 
 ---
 

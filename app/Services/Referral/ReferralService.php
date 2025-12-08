@@ -78,26 +78,32 @@ class ReferralService
      * Note: This method recalculates stats for upline users (users in ref_path),
      * but NOT for the user itself. To recalculate a specific user's stats,
      * use recalcSingleUserStats() directly or call recalcTeamStats() with one of their downlines.
+     * 
+     * @param int $userId User ID
+     * @param bool $forceProcessRewards If true, process rewards/deductions regardless of auto-trigger setting
      */
-    public function recalcTeamStats(int $userId): void
+    public function recalcTeamStats(int $userId, bool $forceProcessRewards = false): void
     {
         $user = User::findOrFail($userId);
         
         // First, recalculate the user's own stats
-        $this->recalcSingleUserStats($userId);
+        $this->recalcSingleUserStats($userId, $forceProcessRewards);
         
         // Then recalculate all users in the upline path
         $pathIds = $this->extractPathIds($user->ref_path);
         
         foreach ($pathIds as $pathUserId) {
-            $this->recalcSingleUserStats($pathUserId);
+            $this->recalcSingleUserStats($pathUserId, $forceProcessRewards);
         }
     }
 
     /**
      * Recalculate stats for a single user.
+     * 
+     * @param int $userId User ID
+     * @param bool $forceProcessRewards If true, process rewards/deductions regardless of auto-trigger setting
      */
-    private function recalcSingleUserStats(int $userId): void
+    private function recalcSingleUserStats(int $userId, bool $forceProcessRewards = false): void
     {
         $user = User::findOrFail($userId);
         
@@ -146,22 +152,47 @@ class ReferralService
                 'dividend_rate' => $dividendRate,
             ]);
             
-            // Auto-grant ambassador reward when level up (if RewardService is available)
-            if ($newLevel !== 'L0') {
+            // Check if we should process rewards/deductions
+            $autoTriggerEnabled = config('referral.auto_trigger_level_changes', true);
+            $shouldProcessRewards = $forceProcessRewards || $autoTriggerEnabled;
+            
+            if ($shouldProcessRewards) {
+                // Process reward/deduction based on level change
                 $rewardService = $this->getRewardService();
                 if ($rewardService) {
                     try {
-                        $rewardService->grantAmbassadorOneOff($userId, $newLevel);
+                        // Check if level is going down
+                        $oldLevelNum = $this->getLevelNumber($oldLevel);
+                        $newLevelNum = $this->getLevelNumber($newLevel);
+                        
+                        if ($oldLevelNum > $newLevelNum && $oldLevel !== 'L0') {
+                            // Level is going down, deduct the difference
+                            $rewardService->deductAmbassadorRewardOnLevelDown($userId, $oldLevel, $newLevel);
+                        } elseif ($newLevel !== 'L0') {
+                            // Level is going up, grant reward
+                            $rewardService->grantAmbassadorOneOff($userId, $newLevel);
+                        }
                     } catch (\Exception $e) {
                         // Log error but don't fail the recalculation
-                        Log::error("Failed to grant ambassador reward on level up", [
+                        Log::error("Failed to process ambassador reward on level change", [
                             'user_id' => $userId,
                             'old_level' => $oldLevel,
                             'new_level' => $newLevel,
+                            'force_process' => $forceProcessRewards,
                             'error' => $e->getMessage(),
                         ]);
                     }
                 }
+            } else {
+                // Auto-trigger disabled and not forced, log the level change for manual processing
+                Log::info("Ambassador level changed but auto-trigger is disabled", [
+                    'user_id' => $userId,
+                    'old_level' => $oldLevel,
+                    'new_level' => $newLevel,
+                    'team_active_count' => $teamActiveCount,
+                    'direct_active_count' => $directActiveCount,
+                    'message' => 'Level change requires manual trigger via command with --process-rewards option',
+                ]);
             }
         } else {
             // Even if level doesn't change, update dividend rate to ensure consistency
@@ -388,6 +419,22 @@ class ReferralService
             'L4' => 0.0200, // 2.0%
             'L5' => 0.0250, // 2.5%
             default => 0.0,
+        };
+    }
+
+    /**
+     * Get level number for comparison (0-5).
+     */
+    private function getLevelNumber(string $level): int
+    {
+        return match ($level) {
+            'L0' => 0,
+            'L1' => 1,
+            'L2' => 2,
+            'L3' => 3,
+            'L4' => 4,
+            'L5' => 5,
+            default => 0,
         };
     }
 

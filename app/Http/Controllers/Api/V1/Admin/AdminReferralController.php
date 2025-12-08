@@ -97,5 +97,6 @@ class AdminReferralController extends Controller
             ], 400);
         }
     }
+
 }
 

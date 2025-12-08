@@ -17,6 +17,7 @@ class RecalcReferralStats extends Command
     protected $signature = 'referral:recalc-stats 
                             {user_id? : 用户ID（可选，如果指定则只重算该用户及其上级）}
                             {--all : 重算所有用户的统计数据}
+                            {--process-rewards : 强制处理等级变化的奖励/扣除（不受自动触发开关影响）}
                             {--force : 跳过确认提示}';
 
     /**
@@ -24,7 +25,7 @@ class RecalcReferralStats extends Command
      *
      * @var string
      */
-    protected $description = '重新计算邀请统计数据（direct_count, team_count, ambassador_level）';
+    protected $description = '重新计算邀请统计数据（direct_count, team_count, ambassador_level），可选处理奖励/扣除';
 
     /**
      * Execute the console command.
@@ -34,6 +35,16 @@ class RecalcReferralStats extends Command
         $userId = $this->argument('user_id');
         $all = $this->option('all');
         $force = $this->option('force');
+        $processRewards = $this->option('process-rewards');
+        
+        // 检查自动触发状态
+        $autoTriggerEnabled = config('referral.auto_trigger_level_changes', false);
+        if ($processRewards) {
+            $this->info('✓ 已启用强制处理奖励/扣除模式（不受自动触发开关影响）');
+        } elseif (!$autoTriggerEnabled) {
+            $this->warn('⚠️  注意：自动触发已关闭，等级变化不会自动处理奖励/扣除');
+            $this->info('   如需处理奖励/扣除，请使用 --process-rewards 选项');
+        }
 
         // 参数验证
         if ($userId && $all) {
@@ -70,7 +81,7 @@ class RecalcReferralStats extends Command
 
             foreach ($users as $user) {
                 try {
-                    $referralService->recalcTeamStats($user->id);
+                    $referralService->recalcTeamStats($user->id, $processRewards);
                     $successCount++;
                 } catch (\Exception $e) {
                     $errorCount++;
@@ -135,7 +146,11 @@ class RecalcReferralStats extends Command
 
         // 确认操作
         if (!$force) {
-            $this->info("将重新计算用户 {$userId} 及其所有上级的统计数据");
+            $actionDesc = "将重新计算用户 {$userId} 及其所有上级的统计数据";
+            if ($processRewards) {
+                $actionDesc .= "，并处理等级变化的奖励/扣除";
+            }
+            $this->info($actionDesc);
             if (!$this->confirm('确定要继续吗？', true)) {
                 $this->info('操作已取消');
                 return Command::SUCCESS;
@@ -146,7 +161,7 @@ class RecalcReferralStats extends Command
             $this->info("正在重新计算统计数据...");
             
             // 执行重算
-            $referralService->recalcTeamStats($userId);
+            $referralService->recalcTeamStats($userId, $processRewards);
 
             // 显示更新后的统计数据
             $updatedStat = RefStat::where('user_id', $userId)->first();

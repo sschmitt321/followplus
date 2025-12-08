@@ -74,6 +74,7 @@ class ReferralController extends Controller
             'upline_5pct' => '上级奖励',
             'newbie_next_day' => '新人次日奖励',
             'ambassador_oneoff' => '等级一次性奖励',
+            'ambassador_oneoff_deduction' => '等级下降扣除',
             'dividend' => '周期分红',
             default => $type,
         };
