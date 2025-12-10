@@ -430,8 +430,9 @@ class RewardService
      * 
      * @param string $cycleDate Cycle date in Y-m-d format (e.g., '2025-11-05')
      *                          Should be one of: 5th, 15th, or 25th of the month
+     * @param bool $force Skip date validation (for debugging)
      */
-    public function dispatchDividend(string $cycleDate): void
+    public function dispatchDividend(string $cycleDate, bool $force = false): void
     {
         $date = \Carbon\Carbon::parse($cycleDate);
         $dayOfMonth = $date->day;
@@ -449,6 +450,11 @@ class RewardService
             // 3rd cycle: 15th to 24th
             $cycleStart = $date->copy()->startOfMonth()->addDays(14); // 15th
             $cycleEnd = $date->copy()->subDay()->endOfDay(); // 24th
+        } elseif ($force) {
+            // Force mode: use today as end date, calculate start based on nearest cycle
+            Log::warning("Force mode: Using non-standard cycle date {$cycleDate}");
+            $cycleStart = $date->copy()->subDays(9)->startOfDay();
+            $cycleEnd = $date->copy()->subDay()->endOfDay();
         } else {
             throw new \Exception("Invalid cycle date. Must be 5th, 15th, or 25th of the month. Got: {$cycleDate}");
         }
