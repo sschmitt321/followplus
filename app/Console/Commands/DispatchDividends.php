@@ -26,7 +26,6 @@ class DispatchDividends extends Command
      */
     public function handle(RewardService $rewardService): int
     {
-        // Default to today's date, but should be 5th, 15th, or 25th when called by scheduler
         $cycleDate = $this->argument('cycle_date') ?? now()->format('Y-m-d');
         $forceMode = $this->option('force');
         
@@ -42,8 +41,13 @@ class DispatchDividends extends Command
         $this->info("Starting dividend dispatch for cycle: {$cycleDate}");
 
         try {
-            $rewardService->dispatchDividend($cycleDate, $forceMode);
+            $result = $rewardService->dispatchDividend($cycleDate, $forceMode);
             $this->info("Completed dividend dispatch for cycle: {$cycleDate}");
+            if (!empty($result)) {
+                $this->table(['User ID', 'Level', 'Rate', 'Follow Total', 'Dividend'], $result);
+            } else {
+                $this->info("No dividends to dispatch (no ambassadors or all already processed)");
+            }
             return Command::SUCCESS;
         } catch (\Exception $e) {
             $this->error("Failed to dispatch dividends: {$e->getMessage()}");

@@ -417,103 +417,109 @@ class RewardService
     /**
      * Dispatch dividend for a cycle date.
      * 
-     * Calculates platform revenue from withdrawal fees for the specified cycle period
-     * and distributes dividends to ambassadors based on their dividend rates.
-     * 
-     * Cycle periods:
-     * - 1st cycle: 1st to 4th of the month
-     * - 2nd cycle: 5th to 14th of the month
-     * - 3rd cycle: 15th to 24th of the month
-     * - 4th cycle: 25th to end of the month
+     * Calculates dividends based on the total follow order amount of direct downlines.
+     * dividend = total_follow_amount * dividend_rate
      * 
      * Dividend dispatch dates: 5th, 15th, 25th of each month
      * 
      * @param string $cycleDate Cycle date in Y-m-d format (e.g., '2025-11-05')
-     *                          Should be one of: 5th, 15th, or 25th of the month
      * @param bool $force Skip date validation (for debugging)
+     * @return array Distribution result for display
      */
-    public function dispatchDividend(string $cycleDate, bool $force = false): void
+    public function dispatchDividend(string $cycleDate, bool $force = false): array
     {
-        $date = \Carbon\Carbon::parse($cycleDate);
-        $dayOfMonth = $date->day;
-        
-        // Determine cycle period based on dispatch date
-        if ($dayOfMonth == 5) {
-            // 1st cycle: 1st to 4th
-            $cycleStart = $date->copy()->startOfMonth();
-            $cycleEnd = $date->copy()->subDay()->endOfDay(); // 4th
-        } elseif ($dayOfMonth == 15) {
-            // 2nd cycle: 5th to 14th
-            $cycleStart = $date->copy()->startOfMonth()->addDays(4); // 5th
-            $cycleEnd = $date->copy()->subDay()->endOfDay(); // 14th
-        } elseif ($dayOfMonth == 25) {
-            // 3rd cycle: 15th to 24th
-            $cycleStart = $date->copy()->startOfMonth()->addDays(14); // 15th
-            $cycleEnd = $date->copy()->subDay()->endOfDay(); // 24th
-        } elseif ($force) {
-            // Force mode: use today as end date, calculate start based on nearest cycle
-            Log::warning("Force mode: Using non-standard cycle date {$cycleDate}");
-            $cycleStart = $date->copy()->subDays(9)->startOfDay();
-            $cycleEnd = $date->copy()->subDay()->endOfDay();
-        } else {
-            throw new \Exception("Invalid cycle date. Must be 5th, 15th, or 25th of the month. Got: {$cycleDate}");
-        }
-        
-        // Calculate platform revenue from withdrawal fees for this cycle
-        $platformRevenue = $this->calculatePlatformRevenue($cycleStart, $cycleEnd);
-        
-        if ($platformRevenue->isZero()) {
-            Log::info("No platform revenue for cycle {$cycleDate}, skipping dividend dispatch");
-            return;
-        }
-        
-        Log::info("Dispatching dividends for cycle {$cycleDate}", [
-            'cycle_start' => $cycleStart->format('Y-m-d'),
-            'cycle_end' => $cycleEnd->format('Y-m-d'),
-            'platform_revenue' => $platformRevenue->toFixed(6),
-        ]);
-        
         // Get all users with dividend_rate > 0
         $stats = RefStat::where('dividend_rate', '>', 0)->get();
         
+        if ($stats->isEmpty()) {
+            Log::info("No ambassadors with dividend rate for cycle {$cycleDate}");
+            return [];
+        }
+        
+        Log::info("Dispatching dividends for cycle {$cycleDate}", [
+            'ambassador_count' => $stats->count(),
+        ]);
+        
+        $result = [];
+        
         foreach ($stats as $stat) {
-            // Calculate dividend based on platform revenue and user's dividend rate
-            $dividendAmount = $platformRevenue->multiply($stat->dividend_rate);
-            
-            if ($dividendAmount->isZero()) {
+            // Check for duplicate (idempotency)
+            $bizId = "dividend_{$cycleDate}_{$stat->user_id}";
+            $existingReward = RefReward::where('biz_id', $bizId)->first();
+            if ($existingReward) {
+                Log::info("Dividend already dispatched for user {$stat->user_id} on {$cycleDate}");
                 continue;
             }
-
-            // Create event
-            $event = RefEvent::create([
-                'trigger_user_id' => $stat->user_id,
-                'event_type' => 'dividend',
-                'amount' => $dividendAmount,
-                'meta_json' => [
-                    'cycle_date' => $cycleDate,
-                    'cycle_start' => $cycleStart->format('Y-m-d'),
-                    'cycle_end' => $cycleEnd->format('Y-m-d'),
-                    'platform_revenue' => $platformRevenue->toFixed(6),
-                ],
-            ]);
-
-            // Create reward
-            $bizId = "dividend_{$cycleDate}_{$stat->user_id}";
-            $this->createReward(
+            
+            // Calculate total follow amount for direct downlines
+            $followTotal = $this->calculateDirectDownlinesFollowTotal($stat->user_id);
+            
+            // Calculate dividend: total * rate
+            $dividendAmount = $followTotal->multiply($stat->dividend_rate);
+            
+            $resultRow = [
                 $stat->user_id,
-                null,
-                'dividend',
-                $dividendAmount,
-                $event->id,
-                $bizId,
-                [
-                    'cycle_date' => $cycleDate,
-                    'cycle_start' => $cycleStart->format('Y-m-d'),
-                    'cycle_end' => $cycleEnd->format('Y-m-d'),
-                    'platform_revenue' => $platformRevenue->toFixed(6),
-                ]
-            );
+                $stat->ambassador_level,
+                $stat->dividend_rate,
+                $followTotal->toFixed(2),
+                $dividendAmount->toFixed(2),
+            ];
+            
+            // Only create reward if positive
+            if ($dividendAmount->isPositive()) {
+                // Create event
+                $event = RefEvent::create([
+                    'trigger_user_id' => $stat->user_id,
+                    'event_type' => 'dividend',
+                    'amount' => $dividendAmount,
+                    'meta_json' => [
+                        'cycle_date' => $cycleDate,
+                        'follow_total' => $followTotal->toFixed(2),
+                        'dividend_rate' => $stat->dividend_rate,
+                    ],
+                ]);
+
+                // Create reward
+                $this->createReward(
+                    $stat->user_id,
+                    null,
+                    'dividend',
+                    $dividendAmount,
+                    $event->id,
+                    $bizId,
+                    [
+                        'cycle_date' => $cycleDate,
+                        'follow_total' => $followTotal->toFixed(2),
+                    ]
+                );
+            }
+            
+            $result[] = $resultRow;
         }
+        
+        return $result;
+    }
+    
+    /**
+     * Calculate total follow order amount for a user's direct downlines.
+     * 
+     * @param int $userId The ambassador's user ID
+     * @return Decimal Total follow amount of direct downlines
+     */
+    private function calculateDirectDownlinesFollowTotal(int $userId): Decimal
+    {
+        // Get direct downlines
+        $directDownlineIds = User::where('invited_by_user_id', $userId)->pluck('id');
+        
+        if ($directDownlineIds->isEmpty()) {
+            return Decimal::zero();
+        }
+        
+        // Sum all follow orders (amount_base) for direct downlines
+        $total = \App\Models\FollowOrder::whereIn('user_id', $directDownlineIds)
+            ->sum('amount_base');
+        
+        return Decimal::of($total ?? 0);
     }
     
     /**

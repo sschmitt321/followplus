@@ -20,6 +20,8 @@ class RefStat extends Model
         'ambassador_level',
         'ambassador_reward_total',
         'dividend_rate',
+        'last_dividend_follow_total',
+        'last_dividend_at',
         'total_rewards',
     ];
 
@@ -28,6 +30,8 @@ class RefStat extends Model
         return [
             'ambassador_reward_total' => MoneyCast::class,
             'dividend_rate' => 'decimal:4',
+            'last_dividend_follow_total' => MoneyCast::class,
+            'last_dividend_at' => 'datetime',
             'total_rewards' => MoneyCast::class,
         ];
     }
