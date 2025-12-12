@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\Referral\RewardService;
+use App\Support\TimeHelper;
 use Illuminate\Console\Command;
 
 class DispatchDividends extends Command
@@ -26,7 +27,7 @@ class DispatchDividends extends Command
      */
     public function handle(RewardService $rewardService): int
     {
-        $cycleDate = $this->argument('cycle_date') ?? now()->format('Y-m-d');
+        $cycleDate = $this->argument('cycle_date') ?? TimeHelper::now()->format('Y-m-d');
         $forceMode = $this->option('force');
         
         $dayOfMonth = (int) date('d', strtotime($cycleDate));

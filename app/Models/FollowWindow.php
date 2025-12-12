@@ -64,8 +64,8 @@ class FollowWindow extends Model
     {
         $now = TimeHelper::now();
         // Convert window times to UTC+8 for comparison
-        $startAtUtc8 = $this->start_at->setTimezone('Asia/Shanghai');
-        $expireAtUtc8 = $this->expire_at->setTimezone('Asia/Shanghai');
+        $startAtUtc8 = TimeHelper::toUtc8($this->start_at);
+        $expireAtUtc8 = TimeHelper::toUtc8($this->expire_at);
         
         return $this->status === 'active' 
             && $now->gte($startAtUtc8) 

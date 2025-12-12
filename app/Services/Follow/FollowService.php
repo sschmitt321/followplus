@@ -15,6 +15,7 @@ use App\Services\Ledger\LedgerService;
 use App\Support\Decimal;
 use App\Support\TimeHelper;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class FollowService
 {
@@ -48,8 +49,8 @@ class FollowService
                 }
                 
                 // Convert window times to UTC+8 for comparison
-                $startAtUtc8 = $window->start_at->setTimezone('Asia/Shanghai');
-                $expireAtUtc8 = $window->expire_at->setTimezone('Asia/Shanghai');
+                $startAtUtc8 = TimeHelper::toUtc8($window->start_at);
+                $expireAtUtc8 = TimeHelper::toUtc8($window->expire_at);
                 
                 if ($now->lt($startAtUtc8)) {
                     $reason[] = "current time ({$now->format('Y-m-d H:i:s')}) is before start time ({$startAtUtc8->format('Y-m-d H:i:s')})";
@@ -144,7 +145,7 @@ class FollowService
             if ($amountInput) {
                 if (!$amountInput->equals($amountBase)) {
                     // Log discrepancy and use calculated amount
-                    \Log::warning("Amount input mismatch for user {$userId}: input={$amountInput}, calculated={$amountBase}. Using calculated amount.");
+                    Log::warning("Amount input mismatch for user {$userId}: input={$amountInput}, calculated={$amountBase}. Using calculated amount.");
                     // Use calculated amount_base instead of user input
                     $amountInput = null; // Clear invalid input, will use amount_base
                 }
@@ -183,9 +184,10 @@ class FollowService
      */
     public function settleExpiredWindows(): int
     {
-        $now = TimeHelper::now();
-        // Convert to UTC for database comparison
-        $nowUtc = $now->utc();
+        // Get current UTC+8 time, then convert to UTC for database comparison
+        // Database stores expire_at in UTC, but we work with UTC+8 timezone
+        $nowUtc8 = TimeHelper::now();
+        $nowUtc = $nowUtc8->utc();
         
         // Get expired windows that haven't been settled
         $expiredWindows = FollowWindow::where('status', 'active')
@@ -217,7 +219,7 @@ class FollowService
                     $order->update([
                         'status' => 'settled',
                         'profit' => $profit,
-                        'settled_at' => TimeHelper::now()->utc(),
+                        'settled_at' => TimeHelper::nowUtc(), // Store UTC for database
                     ]);
 
                     // Unfreeze the original amount from contract account
@@ -254,9 +256,11 @@ class FollowService
     public function getAvailableWindows(?string $date = null, ?int $userId = null): array
     {
         $date = $date ?? TimeHelper::now()->format('Y-m-d');
-        // Parse date in UTC+8 timezone
-        $startOfDay = TimeHelper::parse($date)->startOfDay()->utc();
-        $endOfDay = TimeHelper::parse($date)->endOfDay()->utc();
+        // Parse date in UTC+8 timezone, then convert to UTC for database query
+        $startOfDayUtc8 = TimeHelper::parse($date)->startOfDay();
+        $endOfDayUtc8 = TimeHelper::parse($date)->endOfDay();
+        $startOfDay = $startOfDayUtc8->utc();
+        $endOfDay = $endOfDayUtc8->utc();
 
         $windows = FollowWindow::where('status', 'active')
             ->whereBetween('start_at', [$startOfDay, $endOfDay])
@@ -270,7 +274,7 @@ class FollowService
             });
         }
 
-        return $windows->map(function ($window) use ($userId) {
+        return $windows->map(function ($window) use ($userId, $date) {
             $canParticipate = $userId !== null 
                 ? $this->canUserParticipate($userId, $window->window_type)
                 : true;

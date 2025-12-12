@@ -221,7 +221,7 @@ class ReviewKyc extends Command
                     ['操作', $actionText],
                     ['新状态', $this->formatStatus($newStatus)],
                     ['审核原因', $reason ?? 'N/A'],
-                    ['审核时间', now()->format('Y-m-d H:i:s')],
+                    ['审核时间', \App\Support\TimeHelper::now()->format('Y-m-d H:i:s')],
                 ]
             );
 

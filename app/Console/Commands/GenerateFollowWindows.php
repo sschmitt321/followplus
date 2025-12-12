@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\FollowWindow;
 use App\Models\InviteToken;
 use App\Models\Symbol;
+use App\Support\TimeHelper;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
@@ -29,10 +30,11 @@ class GenerateFollowWindows extends Command
      */
     public function handle(): int
     {
-        $date = $this->argument('date') ?? now()->format('Y-m-d');
-        $targetDate = \Carbon\Carbon::parse($date);
+        $date = $this->argument('date') ?? TimeHelper::now()->format('Y-m-d');
+        // Parse date in UTC+8 timezone
+        $targetDate = TimeHelper::parse($date);
 
-        $this->info("Generating follow windows for {$date}...");
+        $this->info("Generating follow windows for {$date} (UTC+8)...");
 
         // Get enabled symbols
         $symbols = Symbol::where('enabled', true)->get();
@@ -42,8 +44,8 @@ class GenerateFollowWindows extends Command
             return Command::FAILURE;
         }
 
-        $fixedHours = [13, 20]; // Fixed windows at 13:00 and 20:00
-        $bonusHours = [12, 14, 19, 21]; // Bonus windows at 12:00, 14:00, 19:00, 21:00
+        $fixedHours = [13, 20]; // Fixed windows at 13:00 and 20:00 (UTC+8)
+        $bonusHours = [12, 14, 19, 21]; // Bonus windows at 12:00, 14:00, 19:00, 21:00 (UTC+8)
 
         $windowCount = 0;
         $tokenCount = 0;
@@ -51,8 +53,11 @@ class GenerateFollowWindows extends Command
         foreach ($symbols as $symbol) {
             // Generate fixed windows
             foreach ($fixedHours as $hour) {
-                $startAt = $targetDate->copy()->setTime($hour, 0, 0);
-                $expireAt = $startAt->copy()->addHours(1); // 1 hour window
+                // Set time in UTC+8, then convert to UTC for database storage
+                $startAtUtc8 = $targetDate->copy()->setTime($hour, 0, 0);
+                $expireAtUtc8 = $startAtUtc8->copy()->addHours(1); // 1 hour window
+                $startAt = TimeHelper::toDatabase($startAtUtc8);
+                $expireAt = TimeHelper::toDatabase($expireAtUtc8);
 
                 $window = FollowWindow::create([
                     'symbol_id' => $symbol->id,
@@ -80,8 +85,11 @@ class GenerateFollowWindows extends Command
 
             // Generate bonus windows
             foreach ($bonusHours as $hour) {
-                $startAt = $targetDate->copy()->setTime($hour, 0, 0);
-                $expireAt = $startAt->copy()->addHours(1);
+                // Set time in UTC+8, then convert to UTC for database storage
+                $startAtUtc8 = $targetDate->copy()->setTime($hour, 0, 0);
+                $expireAtUtc8 = $startAtUtc8->copy()->addHours(1);
+                $startAt = TimeHelper::toDatabase($startAtUtc8);
+                $expireAt = TimeHelper::toDatabase($expireAtUtc8);
 
                 $window = FollowWindow::create([
                     'symbol_id' => $symbol->id,
