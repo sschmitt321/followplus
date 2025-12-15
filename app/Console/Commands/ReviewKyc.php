@@ -53,7 +53,7 @@ class ReviewKyc extends Command
      */
     private function listKycRecords(bool $all = false, ?string $status = null): int
     {
-        $query = UserKyc::with('user:id,email', 'user.profile:id,user_id,name');
+        $query = UserKyc::with('user:id,email,phone', 'user.profile:id,user_id,name');
 
         // 默认只显示待审核的，除非指定了--all或--status
         if (!$all && !$status) {
@@ -81,6 +81,7 @@ class ReviewKyc extends Command
                 'ID' => $kyc->id,
                 '用户ID' => $kyc->user_id,
                 '用户邮箱' => $kyc->user->email ?? 'N/A',
+                '手机号' => $kyc->user->phone ?? 'N/A',
                 '用户姓名' => $kyc->user->profile?->name ?? 'N/A',
                 '等级' => $kyc->level,
                 '状态' => $this->formatStatus($kyc->status),
@@ -91,7 +92,7 @@ class ReviewKyc extends Command
 
         $this->info("\n找到 " . $kycRecords->count() . " 条KYC记录：\n");
         $this->table(
-            ['ID', '用户ID', '用户邮箱', '用户姓名', '等级', '状态', '提交时间', '审核时间'],
+            ['ID', '用户ID', '用户邮箱', '手机号', '用户姓名', '等级', '状态', '提交时间', '审核时间'],
             $tableData
         );
 
@@ -115,7 +116,7 @@ class ReviewKyc extends Command
         KycService $kycService,
         AuditService $auditService
     ): int {
-        $kyc = UserKyc::with('user:id,email', 'user.profile:id,user_id,name')->find($id);
+        $kyc = UserKyc::with('user:id,email,phone', 'user.profile:id,user_id,name')->find($id);
 
         if (!$kyc) {
             $this->error("KYC记录不存在: {$id}");
@@ -130,6 +131,7 @@ class ReviewKyc extends Command
                 ['ID', $kyc->id],
                 ['用户ID', $kyc->user_id],
                 ['用户邮箱', $kyc->user->email ?? 'N/A'],
+                ['手机号', $kyc->user->phone ?? 'N/A'],
                 ['用户姓名', $kyc->user->profile?->name ?? 'N/A'],
                 ['等级', $kyc->level],
                 ['当前状态', $this->formatStatus($kyc->status)],
