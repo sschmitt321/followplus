@@ -451,8 +451,8 @@ class RewardService
                 continue;
             }
             
-            // Calculate total follow amount for direct downlines
-            $followTotal = $this->calculateDirectDownlinesFollowTotal($stat->user_id);
+            // Calculate total follow amount for direct downlines within the cycle period
+            $followTotal = $this->calculateDirectDownlinesFollowTotal($stat->user_id, $cycleDate);
             
             // Calculate dividend: total * rate
             $dividendAmount = $followTotal->multiply($stat->dividend_rate);
@@ -501,12 +501,24 @@ class RewardService
     }
     
     /**
-     * Calculate total follow order amount for a user's direct downlines.
+     * Calculate total follow order amount for a user's direct downlines within a cycle period.
+     * 
+     * Time window calculation logic:
+     * 1. First, try to find the last dividend reward's created_at time (for testing scenarios with short intervals)
+     * 2. If no previous dividend found, use fixed date boundaries based on cycle date:
+     *    - 5th: from previous month's 25th 00:00 UTC+8 to current month's 5th 00:00 UTC+8
+     *    - 15th: from current month's 5th 00:00 UTC+8 to current month's 15th 00:00 UTC+8
+     *    - 25th: from current month's 15th 00:00 UTC+8 to current month's 25th 00:00 UTC+8
+     * 
+     * This approach supports both:
+     * - Production: Fixed date boundaries for consistent monthly cycles
+     * - Testing: Actual execution time boundaries for flexible testing scenarios
      * 
      * @param int $userId The ambassador's user ID
-     * @return Decimal Total follow amount of direct downlines
+     * @param string $cycleDate Cycle date in Y-m-d format (e.g., '2025-11-05')
+     * @return Decimal Total follow amount of direct downlines within the cycle period
      */
-    private function calculateDirectDownlinesFollowTotal(int $userId): Decimal
+    private function calculateDirectDownlinesFollowTotal(int $userId, string $cycleDate): Decimal
     {
         // Get direct downlines
         $directDownlineIds = User::where('invited_by_user_id', $userId)->pluck('id');
@@ -515,11 +527,112 @@ class RewardService
             return Decimal::zero();
         }
         
-        // Sum all follow orders (amount_base) for direct downlines
+        // Try to find the last dividend reward's created_at time (for testing scenarios)
+        $lastDividendReward = RefReward::where('user_id', $userId)
+            ->where('type', 'dividend')
+            ->where('status', 'confirmed')
+            ->orderBy('created_at', 'desc')
+            ->first();
+        
+        $startDateUtc = null;
+        
+        if ($lastDividendReward) {
+            // Use the actual execution time of the last dividend (for testing with short intervals)
+            // Convert to UTC+8 first to ensure consistent timezone handling
+            $lastDividendUtc8 = \App\Support\TimeHelper::toUtc8($lastDividendReward->created_at);
+            $startDateUtc = $lastDividendUtc8->utc();
+            
+            Log::info("Using last dividend execution time as start date", [
+                'user_id' => $userId,
+                'last_dividend_created_at' => $lastDividendReward->created_at->toIso8601String(),
+                'start_date_utc' => $startDateUtc->toIso8601String(),
+            ]);
+        } else {
+            // No previous dividend found, use fixed date boundaries (production mode)
+            $previousDividendDate = $this->getPreviousDividendDate($cycleDate);
+            $startDateUtc8 = \App\Support\TimeHelper::parse($previousDividendDate)->startOfDay();
+            $startDateUtc = $startDateUtc8->utc();
+            
+            Log::info("No previous dividend found, using fixed date boundary", [
+                'user_id' => $userId,
+                'previous_dividend_date' => $previousDividendDate,
+                'start_date_utc' => $startDateUtc->toIso8601String(),
+            ]);
+        }
+        
+        // End date calculation
+        // If we're using last dividend execution time and it's on the same date as cycleDate,
+        // use current execution time (for testing scenarios with short intervals)
+        // Otherwise, use cycle date 00:00 UTC+8 (production mode)
+        $cycleDateUtc8 = \App\Support\TimeHelper::parse($cycleDate)->startOfDay();
+        
+        if ($lastDividendReward) {
+            $lastDividendDateUtc8 = \App\Support\TimeHelper::toUtc8($lastDividendReward->created_at)->startOfDay();
+            $cycleDateUtc8Parsed = \App\Support\TimeHelper::parse($cycleDate)->startOfDay();
+            
+            // If last dividend was on the same date as cycleDate, use current time (for testing)
+            if ($lastDividendDateUtc8->equalTo($cycleDateUtc8Parsed)) {
+                $endDateUtc = \App\Support\TimeHelper::nowUtc();
+                Log::info("Last dividend on same date as cycleDate, using current time as end date", [
+                    'user_id' => $userId,
+                    'end_date_utc' => $endDateUtc->toIso8601String(),
+                ]);
+            } else {
+                // Different dates, use cycle date 00:00 UTC+8
+                $endDateUtc = $cycleDateUtc8->utc();
+            }
+        } else {
+            // No previous dividend, use cycle date 00:00 UTC+8 (production mode)
+            $endDateUtc = $cycleDateUtc8->utc();
+        }
+        
+        // Sum follow orders (amount_base) for direct downlines within the cycle period
         $total = \App\Models\FollowOrder::whereIn('user_id', $directDownlineIds)
+            ->where('created_at', '>=', $startDateUtc)
+            ->where('created_at', '<', $endDateUtc)
             ->sum('amount_base');
         
         return Decimal::of($total ?? 0);
+    }
+    
+    /**
+     * Get the previous dividend date based on current cycle date.
+     * 
+     * Dividend dates: 5th, 15th, 25th of each month
+     * 
+     * @param string $cycleDate Current cycle date in Y-m-d format (e.g., '2025-11-05')
+     * @return string Previous dividend date in Y-m-d format
+     */
+    private function getPreviousDividendDate(string $cycleDate): string
+    {
+        $date = \App\Support\TimeHelper::parse($cycleDate);
+        $day = (int) $date->format('d');
+        
+        if ($day === 5) {
+            // Previous dividend date is last month's 25th
+            return $date->copy()->subMonth()->day(25)->format('Y-m-d');
+        } elseif ($day === 15) {
+            // Previous dividend date is current month's 5th
+            return $date->copy()->day(5)->format('Y-m-d');
+        } elseif ($day === 25) {
+            // Previous dividend date is current month's 15th
+            return $date->copy()->day(15)->format('Y-m-d');
+        } else {
+            // For non-standard dates (e.g., testing), calculate based on nearest previous dividend date
+            if ($day < 5) {
+                // Before 5th, previous is last month's 25th
+                return $date->copy()->subMonth()->day(25)->format('Y-m-d');
+            } elseif ($day < 15) {
+                // Between 5th and 15th, previous is current month's 5th
+                return $date->copy()->day(5)->format('Y-m-d');
+            } elseif ($day < 25) {
+                // Between 15th and 25th, previous is current month's 15th
+                return $date->copy()->day(15)->format('Y-m-d');
+            } else {
+                // After 25th, previous is current month's 25th
+                return $date->copy()->day(25)->format('Y-m-d');
+            }
+        }
     }
     
     /**
