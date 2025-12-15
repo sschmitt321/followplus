@@ -18,6 +18,8 @@ Schedule::command('rewards:grant-newbie-next-day')
     ->onFailure(function () {
         \Log::error('GrantNewbieNextDayRewards: Scheduled task failed', [
             'message' => '定时任务执行失败，请检查日志',
+            'failed_at' => now()->toDateTimeString(),
+            'timestamp' => now()->timestamp,
         ]);
     });
 
@@ -32,6 +34,8 @@ Schedule::command('referral:revoke-ambassador-benefits')
     ->onFailure(function () {
         \Log::error('RevokeAmbassadorBenefits: Scheduled task failed', [
             'message' => '定时任务执行失败，请检查日志',
+            'failed_at' => now()->toDateTimeString(),
+            'timestamp' => now()->timestamp,
         ]);
     });
 
@@ -49,6 +53,8 @@ Schedule::command('rewards:dispatch-dividends')
     ->onFailure(function () {
         \Log::error('DispatchDividends: Scheduled task failed (5th)', [
             'message' => '定时任务执行失败，请检查日志',
+            'failed_at' => now()->toDateTimeString(),
+            'timestamp' => now()->timestamp,
         ]);
     });
 
@@ -60,6 +66,8 @@ Schedule::command('rewards:dispatch-dividends')
     ->onFailure(function () {
         \Log::error('DispatchDividends: Scheduled task failed (15th)', [
             'message' => '定时任务执行失败，请检查日志',
+            'failed_at' => now()->toDateTimeString(),
+            'timestamp' => now()->timestamp,
         ]);
     });
 
@@ -71,6 +79,8 @@ Schedule::command('rewards:dispatch-dividends')
     ->onFailure(function () {
         \Log::error('DispatchDividends: Scheduled task failed (25th)', [
             'message' => '定时任务执行失败，请检查日志',
+            'failed_at' => now()->toDateTimeString(),
+            'timestamp' => now()->timestamp,
         ]);
     });
 
@@ -89,9 +99,16 @@ Schedule::command('rewards:dispatch-dividends')
 // Schedule follow order settlement (every minute)
 Schedule::command('follow:settle-orders')
     ->everyMinute()
-    ->withoutOverlapping()
+    ->withoutOverlapping(5) // Auto-release lock after 5 minutes to prevent stuck tasks
     ->runInBackground()
-    ->appendOutputTo(storage_path('logs/scheduler.log'));
+    ->appendOutputTo(storage_path('logs/scheduler.log'))
+    ->onFailure(function () {
+        \Log::error('SettleFollowOrders: Scheduled task failed', [
+            'message' => '定时任务执行失败，请检查日志',
+            'failed_at' => now()->toDateTimeString(),
+            'timestamp' => now()->timestamp,
+        ]);
+    });
 
 // Schedule Tron deposit processing
 // Strategy: Separate scan and update for better control
@@ -106,6 +123,8 @@ Schedule::command('tron:scan-deposits')
     ->onFailure(function () {
         \Log::error('TronScanDeposits: Scheduled task failed', [
             'message' => '定时任务执行失败，请检查日志和网络连接',
+            'failed_at' => now()->toDateTimeString(),
+            'timestamp' => now()->timestamp,
         ]);
     });
 
@@ -120,6 +139,8 @@ Schedule::command('tron:update-confirms')
     ->onFailure(function () {
         \Log::error('TronUpdateDepositConfirms: Scheduled task failed', [
             'message' => '定时任务执行失败，请检查日志和网络连接',
+            'failed_at' => now()->toDateTimeString(),
+            'timestamp' => now()->timestamp,
         ]);
     });
 
@@ -147,6 +168,8 @@ if ($autoCollectionEnabled && $hasMainTrxWalletKey && $hasMainUsdtWallet) {
         ->onFailure(function () {
             \Log::error('LiquidityScanBalances: Scheduled task failed', [
                 'message' => '余额扫描任务执行失败，请检查日志和网络连接',
+                'failed_at' => now()->toDateTimeString(),
+                'timestamp' => now()->timestamp,
             ]);
         });
 
@@ -159,6 +182,8 @@ if ($autoCollectionEnabled && $hasMainTrxWalletKey && $hasMainUsdtWallet) {
         ->onFailure(function () {
             \Log::error('LiquidityTransferUsdt: Scheduled task failed', [
                 'message' => 'USDT 转账任务执行失败，请检查日志和网络连接',
+                'failed_at' => now()->toDateTimeString(),
+                'timestamp' => now()->timestamp,
             ]);
         });
 
@@ -171,6 +196,8 @@ if ($autoCollectionEnabled && $hasMainTrxWalletKey && $hasMainUsdtWallet) {
         ->onFailure(function () {
             \Log::error('LiquidityTopupTrx: Scheduled task failed', [
                 'message' => 'TRX 充值任务执行失败，请检查日志和网络连接',
+                'failed_at' => now()->toDateTimeString(),
+                'timestamp' => now()->timestamp,
             ]);
         });
 } else {
