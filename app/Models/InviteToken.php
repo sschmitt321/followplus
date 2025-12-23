@@ -16,6 +16,7 @@ class InviteToken extends Model
         'valid_after',
         'valid_before',
         'symbol_id',
+        'owner_user_id',
     ];
 
     protected function casts(): array
@@ -40,6 +41,14 @@ class InviteToken extends Model
     public function symbol(): BelongsTo
     {
         return $this->belongsTo(Symbol::class);
+    }
+
+    /**
+     * Get the owner (creator) of this invite token.
+     */
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'owner_user_id');
     }
 
     /**

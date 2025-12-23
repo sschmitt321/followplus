@@ -45,7 +45,7 @@ class DispatchDividends extends Command
             $result = $rewardService->dispatchDividend($cycleDate, $forceMode);
             $this->info("Completed dividend dispatch for cycle: {$cycleDate}");
             if (!empty($result)) {
-                $this->table(['User ID', 'Level', 'Rate', 'Follow Total', 'Dividend'], $result);
+                $this->table(['User ID', 'Phone', 'Level', 'Rate', 'Follow Total', 'Dividend'], $result);
             } else {
                 $this->info("No dividends to dispatch (no ambassadors or all already processed)");
             }

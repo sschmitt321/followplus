@@ -125,6 +125,15 @@ class FollowService
                 throw new \Exception('Token symbol mismatch');
             }
 
+            // For inviter_bonus window type, verify that user is a direct invitee of the token owner
+            if ($window->window_type === 'inviter_bonus' && $token->owner_user_id) {
+                $user = User::findOrFail($userId);
+                // Check if current user is directly invited by the token owner
+                if ($user->invited_by_user_id !== $token->owner_user_id) {
+                    throw new \Exception('邀请人跟单只限直系邀请才可以参与');
+                }
+            }
+
             // Check if user has already used this invite token
             $existingOrder = FollowOrder::where('user_id', $userId)
                 ->where('invite_token', $inviteToken)

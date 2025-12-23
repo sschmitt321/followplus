@@ -101,6 +101,16 @@ class WithdrawService
                 throw new \Exception('币币账户余额不足');
             }
 
+            // Check minimum balance requirement: after withdrawal, balance must be >= 1000 USDT or 0 (full withdrawal)
+            $balanceAfterWithdraw = $spotBalance->subtract($amount);
+            $minBalance = Decimal::of('1000');
+            
+            // If balance after withdrawal is between 0 and 1000 (exclusive), reject
+            // Allow full withdrawal (balance = 0) or partial withdrawal leaving >= 1000
+            if ($balanceAfterWithdraw->isPositive() && $balanceAfterWithdraw->lessThan($minBalance)) {
+                throw new \Exception('提现后余额必须至少保留1000 USDT，或全部提现清仓');
+            }
+
             $isNewbie = $this->isNewbie($user);
             $feeRate = $isNewbie ? 0.10 : $this->configService->get('WITHDRAW_FEE_RATE_OLD', self::WITHDRAW_FEE_RATE_OLD);
             $fee = $amount->percentage($feeRate * 100);

@@ -440,6 +440,10 @@ class RewardService
             'ambassador_count' => $stats->count(),
         ]);
         
+        // Preload user phones for better performance
+        $userIds = $stats->pluck('user_id')->unique();
+        $users = User::whereIn('id', $userIds)->pluck('phone', 'id');
+        
         $result = [];
         
         foreach ($stats as $stat) {
@@ -457,8 +461,12 @@ class RewardService
             // Calculate dividend: total * rate
             $dividendAmount = $followTotal->multiply($stat->dividend_rate);
             
+            // Get user phone
+            $phone = $users->get($stat->user_id) ?? '-';
+            
             $resultRow = [
                 $stat->user_id,
+                $phone,
                 $stat->ambassador_level,
                 $stat->dividend_rate,
                 $followTotal->toFixed(2),

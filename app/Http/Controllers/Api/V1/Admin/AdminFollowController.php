@@ -121,10 +121,18 @@ class AdminFollowController extends Controller
             'token' => 'nullable|string|max:64', // Custom token (optional, max 64 chars, auto-generated if not provided)
             'valid_after' => 'required|date', // Token validity start time (YYYY-MM-DD HH:MM:SS format)
             'valid_before' => 'required|date|after:valid_after', // Token validity end time (must be after valid_after)
+            'owner_user_id' => 'nullable|integer|exists:users,id', // Owner user ID (required for inviter_bonus window type)
         ]);
 
         try {
             $window = FollowWindow::findOrFail($validated['follow_window_id']);
+
+            // For inviter_bonus window type, owner_user_id is required
+            if ($window->window_type === 'inviter_bonus' && empty($validated['owner_user_id'])) {
+                return response()->json([
+                    'error' => 'owner_user_id is required for inviter_bonus window type',
+                ], 400);
+            }
 
             $token = InviteToken::create([
                 'follow_window_id' => $validated['follow_window_id'],
@@ -132,6 +140,7 @@ class AdminFollowController extends Controller
                 'valid_after' => $validated['valid_after'],
                 'valid_before' => $validated['valid_before'],
                 'symbol_id' => $window->symbol_id,
+                'owner_user_id' => $validated['owner_user_id'] ?? null,
             ]);
 
             // Log audit

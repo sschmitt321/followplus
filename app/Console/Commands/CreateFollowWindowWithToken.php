@@ -26,6 +26,7 @@ class CreateFollowWindowWithToken extends Command
                             {--token= : 自定义邀请码（可选，不提供则自动生成）}
                             {--reward-min=0.5 : 最小奖励率 (0-1)}
                             {--reward-max=0.6 : 最大奖励率 (0-1)}
+                            {--owner-user-id= : 邀请码所有者用户ID（inviter_bonus窗口类型必需）}
                             {--auto-token : 自动生成邀请码（默认启用）}';
 
     /**
@@ -47,6 +48,7 @@ class CreateFollowWindowWithToken extends Command
         $customToken = $this->option('token');
         $rewardMin = (float) $this->option('reward-min');
         $rewardMax = (float) $this->option('reward-max');
+        $ownerUserId = $this->option('owner-user-id') ? (int) $this->option('owner-user-id') : null;
 
         // 验证交易对
         $symbol = Symbol::find($symbolId);
@@ -60,6 +62,21 @@ class CreateFollowWindowWithToken extends Command
             $this->error("无效的窗口类型: {$windowType}");
             $this->info("支持的窗口类型: fixed_daily, newbie_bonus, inviter_bonus");
             return Command::FAILURE;
+        }
+
+        // 对于 inviter_bonus 窗口类型，owner_user_id 是必需的
+        if ($windowType === 'inviter_bonus' && empty($ownerUserId)) {
+            $this->error("inviter_bonus 窗口类型必须提供 --owner-user-id 参数");
+            return Command::FAILURE;
+        }
+
+        // 验证 owner_user_id 是否存在
+        if ($ownerUserId) {
+            $ownerUser = \App\Models\User::find($ownerUserId);
+            if (!$ownerUser) {
+                $this->error("用户 ID {$ownerUserId} 不存在");
+                return Command::FAILURE;
+            }
         }
 
         // 解析开始时间（按 UTC+8 时区处理，然后转换为 UTC 存储）
@@ -136,6 +153,7 @@ class CreateFollowWindowWithToken extends Command
                 'valid_after' => $startAt,
                 'valid_before' => $expireAt,
                 'symbol_id' => $symbolId,
+                'owner_user_id' => $ownerUserId,
             ]);
 
             $this->info("✓ 邀请码创建成功！");
